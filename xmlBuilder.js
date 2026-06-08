@@ -183,7 +183,6 @@ function gerarXmlNfe(dados) {
     total.ele('vPIS').txt('0.00').up();
     total.ele('vCOFINS').txt('0.00').up();
     total.ele('vOutro').txt('0.00').up();
-    <vTotTrib>0.00</vTotTrib>
     total.ele('vNF').txt(totalProd.toFixed(2)).up();
 
     // ========== TRANSPORTE ==========
