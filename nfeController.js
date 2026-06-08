@@ -450,50 +450,8 @@ async function consultarStatusNFE(req, res) {
 
 // Sincronizar vendas do ML a partir de 01/06/2026
 async function sincronizarVendasML(req, res) {
-    console.log('🔄 Sincronizando vendas do ML para NF-e...');
-    try {
-        // Importa a função do ml_token_manager (ajuste o caminho conforme sua estrutura)
-        const { buscarVendasML } = require('./ml_token_manager');
-        const result = await buscarVendasML(100);
-        if (!result.success) throw new Error(result.error || 'Erro ao buscar vendas');
-
-        const vendas = result.vendas;
-        const dataReferencia = new Date('2026-06-01');
-        const vendasFiltradas = vendas.filter(v => new Date(v.data_venda) >= dataReferencia);
-
-        let novas = 0;
-        for (const venda of vendasFiltradas) {
-            // Verifica se já existe no Supabase
-            const { data: existing } = await supabase
-                .from('vendas_ml')
-                .select('order_id')
-                .eq('order_id', venda.id_venda_ml)
-                .maybeSingle();
-
-            if (!existing) {
-                // Insere a venda com nfe_emitida = false
-                await supabase.from('vendas_ml').insert({
-                    order_id: venda.id_venda_ml,
-                    cliente_nome: venda.cliente,
-                    cpf_cnpj: null,
-                    endereco: null,
-                    sku: venda.sku,
-                    mlb_id: venda.mlb_id,
-                    valor_total: venda.valor_total,
-                    data_venda: venda.data_venda,
-                    produtos: venda.dados_completos,
-                    meio_envio: venda.tipo_envio,
-                    nfe_emitida: false
-                });
-                novas++;
-            }
-        }
-
-        res.json({ success: true, novas, total: vendasFiltradas.length });
-    } catch (error) {
-        console.error('❌ Erro ao sincronizar vendas:', error);
-        res.status(500).json({ success: false, error: error.message });
-    }
+    console.log('🔄 Sincronização de vendas desabilitada no back-end. Use o front-end para sincronizar.');
+    res.json({ success: true, message: 'Sincronização deve ser feita pelo front-end', novas: 0 });
 }
 
 // Listar vendas sem NF-e
