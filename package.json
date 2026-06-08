@@ -13,6 +13,7 @@
     "express": "^5.2.1",
     "node-fetch": "^2.6.12",
     "node-forge": "^1.4.0",
-    "xml-crypto": "^6.1.2"
+    "xml-crypto": "^6.1.2",
+    "xmlbuilder2": "^3.1.1"
   }
 }
