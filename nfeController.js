@@ -299,7 +299,7 @@ async function listarVendasSemNFE(req, res) {
     try {
         const { data, error } = await supabase
             .from('vendas_ml')
-            .select('id, cliente, sku, valor_total, data_venda, produtos, meio_envio')
+            .select('id, cliente, sku, valor_total, data_venda, dados_completos, meio_envio')
             .eq('nfe_emitida', false);
 
         if (error) throw error;
@@ -314,7 +314,7 @@ async function listarVendasSemNFE(req, res) {
             sku: v.sku,
             valor_total: v.valor_total,
             data_venda: v.data_venda,
-            produtos: v.produtos,
+            produtos: v.dados_completos, // <-- usa a coluna correta
             meio_envio: v.meio_envio
         }));
         res.json(vendas);
