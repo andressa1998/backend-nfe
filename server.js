@@ -6,9 +6,9 @@ const nfeRoutes = require('./nfeRoutes');
 const app = express();
 const PORT = process.env.PORT || 3000;
 
-// Configuração CORS – permitir seu front-end na Vercel
+// Permitir qualquer origem em desenvolvimento (ajuste depois)
 const allowedOrigins = [
-  'https://sistema-wheel-tech.vercel.app',   // substitua pelo domínio real
+  'https://sistema-wheel-tech.vercel.app',
   'http://localhost:5501',
   'http://127.0.0.1:5501'
 ];

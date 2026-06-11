@@ -1,12 +1,11 @@
 const forge = require('node-forge');
 
 function loadCertificates() {
-    // Lê as variáveis de ambiente
     const pfxBase64 = process.env.PFX_BASE64;
     const pfxPassword = process.env.PFX_PASSWORD;
 
     if (!pfxBase64 || !pfxPassword) {
-        throw new Error('Certificado não configurado nas variáveis de ambiente (PFX_BASE64 e PFX_PASSWORD)');
+        throw new Error('Certificado não configurado (PFX_BASE64 e PFX_PASSWORD)');
     }
 
     const pfxBuffer = Buffer.from(pfxBase64, 'base64');
@@ -20,14 +19,14 @@ function loadCertificates() {
     }
     const privateKey = forge.pki.privateKeyToPem(bags[forge.pki.oids.pkcs8ShroudedKeyBag][0].key);
 
-    // Certificado
+    // Certificado (primeiro)
     const certBags = p12.getBags({ bagType: forge.pki.oids.certBag });
     if (!certBags[forge.pki.oids.certBag] || certBags[forge.pki.oids.certBag].length === 0) {
         throw new Error('Certificado não encontrado no PFX');
     }
     const cert = forge.pki.certificateToPem(certBags[forge.pki.oids.certBag][0].cert);
 
-    // Cadeia de certificados (opcional)
+    // Cadeia (se houver mais de um certificado)
     let ca = null;
     if (certBags[forge.pki.oids.certBag].length > 1) {
         ca = certBags[forge.pki.oids.certBag].slice(1).map(c => forge.pki.certificateToPem(c.cert)).join('');
