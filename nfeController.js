@@ -478,6 +478,7 @@ async function sincronizarVendasML(req, res) {
     console.log('🔄 Sincronizando vendas do ML para NF-e...');
     const token = process.env.ML_ACCESS_TOKEN;
     if (!token) {
+        console.error('❌ Token ML não configurado (ML_ACCESS_TOKEN)');
         return res.status(500).json({ success: false, error: 'Token ML não configurado' });
     }
     try {
@@ -507,8 +508,8 @@ async function sincronizarVendasML(req, res) {
         for (const venda of vendasFiltradas) {
             const { data: existing } = await supabase
                 .from('vendas_ml')
-                .select('order_id')
-                .eq('order_id', venda.id.toString())
+                .select('id')
+                .eq('id', venda.id.toString())
                 .maybeSingle();
 
             if (!existing) {
@@ -541,10 +542,9 @@ async function sincronizarVendasML(req, res) {
                     }
                 }
                 await supabase.from('vendas_ml').insert({
+                    id: venda.id.toString(),
                     order_id: venda.id.toString(),
                     cliente_nome: venda.buyer?.nickname || 'N/I',
-                    cpf_cnpj: null,
-                    endereco: null,
                     sku: sku,
                     mlb_id: venda.order_items?.[0]?.item?.id || null,
                     valor_total: venda.total_amount || 0,
@@ -561,10 +561,8 @@ async function sincronizarVendasML(req, res) {
         console.error('❌ Erro ao sincronizar vendas:', error);
         res.status(500).json({ success: false, error: error.message });
     }
-    console.log('🔄 Sincronização de vendas desabilitada no back-end. Use o front-end para sincronizar.');
-    res.json({ success: true, message: 'Sincronização deve ser feita pelo front-end', novas: 0 });
 }
-// ===================== Listar vendas sem NF-e =====================
+
 // ===================== Listar vendas sem NF-e =====================
 async function listarVendasSemNFE(req, res) {
     try {
@@ -572,14 +570,25 @@ async function listarVendasSemNFE(req, res) {
             .from('vendas_ml')
             .select('id, order_id, cliente_nome, sku, valor_total, data_venda, produtos, meio_envio')
             .eq('nfe_emitida', false);
-        if (error) throw error;
-        // Garantir que order_id existe
+
+        if (error) {
+            console.error('Erro Supabase:', error);
+            throw error;
+        }
+
+        if (!data || data.length === 0) {
+            return res.json([]);
+        }
+
+        // Garantir order_id (fallback para id)
         const vendas = data.map(v => ({
             ...v,
             order_id: v.order_id || String(v.id)
         }));
+
         res.json(vendas);
     } catch (error) {
+        console.error('❌ Erro em listarVendasSemNFE:', error);
         res.status(500).json({ error: error.message });
     }
 }
