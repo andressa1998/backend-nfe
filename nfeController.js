@@ -475,92 +475,13 @@ async function consultarStatusNFE(req, res) {
 
 // ===================== Sincronizar Vendas ML =====================
 async function sincronizarVendasML(req, res) {
-    console.log('🔄 Sincronizando vendas do ML para NF-e...');
-    const token = process.env.ML_ACCESS_TOKEN;
-    if (!token) {
-        console.error('❌ Token ML não configurado (ML_ACCESS_TOKEN)');
-        return res.status(500).json({ success: false, error: 'Token ML não configurado' });
-    }
-    try {
-        const dataInicio = new Date('2026-06-01');
-        let todasVendas = [];
-        let offset = 0;
-        const limit = 50;
-        let hasMore = true;
-
-        while (hasMore) {
-            const url = `https://api.mercadolibre.com/orders/search?seller=415176739&sort=date_desc&order.status=paid&limit=${limit}&offset=${offset}`;
-            const response = await fetch(url, {
-                headers: { 'Authorization': `Bearer ${token}`, 'Accept': 'application/json' }
-            });
-            if (!response.ok) throw new Error(`Erro na API do ML: ${response.status}`);
-            const data = await response.json();
-            const vendas = data.results || [];
-            if (vendas.length === 0) break;
-            todasVendas = todasVendas.concat(vendas);
-            offset += limit;
-            hasMore = vendas.length === limit;
-            await new Promise(r => setTimeout(r, 200));
-        }
-
-        const vendasFiltradas = todasVendas.filter(v => new Date(v.date_created) >= dataInicio);
-        let novas = 0;
-        for (const venda of vendasFiltradas) {
-            const { data: existing } = await supabase
-                .from('vendas_ml')
-                .select('id')
-                .eq('id', venda.id.toString())
-                .maybeSingle();
-
-            if (!existing) {
-                let sku = 'SEM_SKU';
-                let produtoTitulo = '';
-                let meioEnvio = 'N/I';
-                if (venda.order_items && venda.order_items.length > 0) {
-                    const item = venda.order_items[0].item;
-                    produtoTitulo = item.title || '';
-                    try {
-                        const itemUrl = `https://api.mercadolibre.com/items/${item.id}`;
-                        const itemRes = await fetch(itemUrl, { headers: { 'Authorization': `Bearer ${token}` } });
-                        if (itemRes.ok) {
-                            const itemData = await itemRes.json();
-                            sku = itemData.seller_sku || item.seller_sku || 'SEM_SKU';
-                        }
-                    } catch (e) { console.warn('Erro ao buscar SKU:', e.message); }
-                    if (venda.shipping && venda.shipping.id) {
-                        try {
-                            const shipUrl = `https://api.mercadolibre.com/shipments/${venda.shipping.id}`;
-                            const shipRes = await fetch(shipUrl, { headers: { 'Authorization': `Bearer ${token}` } });
-                            if (shipRes.ok) {
-                                const shipData = await shipRes.json();
-                                const logType = (shipData.logistic_type || '').toLowerCase();
-                                if (logType === 'fulfillment') meioEnvio = 'FULL';
-                                else if (logType === 'self_service') meioEnvio = 'FLEX';
-                                else if (logType === 'cross_docking') meioEnvio = 'MERCADO ENVIOS';
-                            }
-                        } catch (e) { console.warn('Erro ao buscar envio:', e.message); }
-                    }
-                }
-                await supabase.from('vendas_ml').insert({
-                    id: venda.id.toString(),
-                    order_id: venda.id.toString(),
-                    cliente_nome: venda.buyer?.nickname || 'N/I',
-                    sku: sku,
-                    mlb_id: venda.order_items?.[0]?.item?.id || null,
-                    valor_total: venda.total_amount || 0,
-                    data_venda: venda.date_created,
-                    produtos: JSON.stringify(venda),
-                    meio_envio: meioEnvio,
-                    nfe_emitida: false
-                });
-                novas++;
-            }
-        }
-        res.json({ success: true, novas, total: vendasFiltradas.length });
-    } catch (error) {
-        console.error('❌ Erro ao sincronizar vendas:', error);
-        res.status(500).json({ success: false, error: error.message });
-    }
+    console.log('🔄 Sincronização de vendas desabilitada no back-end. Use o front-end (botão "Sincronizar Vendas ML") para sincronizar.');
+    return res.status(200).json({ 
+        success: false, 
+        error: 'Sincronização deve ser feita pelo front-end', 
+        disabled: true,
+        message: 'Clique no botão "Sincronizar Vendas ML" na interface do sistema.'
+    });
 }
 
 // ===================== Listar vendas sem NF-e =====================
@@ -571,16 +492,13 @@ async function listarVendasSemNFE(req, res) {
             .select('id, order_id, cliente_nome, sku, valor_total, data_venda, produtos, meio_envio')
             .eq('nfe_emitida', false);
 
-        if (error) {
-            console.error('Erro Supabase:', error);
-            throw error;
-        }
+        if (error) throw error;
 
         if (!data || data.length === 0) {
             return res.json([]);
         }
 
-        // Garantir order_id (fallback para id)
+        // Garantir que order_id seja sempre um valor (fallback para id)
         const vendas = data.map(v => ({
             ...v,
             order_id: v.order_id || String(v.id)
