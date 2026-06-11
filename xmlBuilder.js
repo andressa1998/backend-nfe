@@ -69,7 +69,7 @@ function gerarXmlNfe(dados) {
         .ele('NFe', { xmlns: 'http://www.portalfiscal.inf.br/nfe' })
         .ele('infNFe', { versao: '4.00', Id: idNFe });
 
-    // IDE
+    // ========== IDE ==========
     const ide = xml.ele('ide');
     ide.ele('cUF').txt(cUF).up();
     ide.ele('cNF').txt(cNF).up();
@@ -92,7 +92,7 @@ function gerarXmlNfe(dados) {
     ide.ele('procEmi').txt('0').up();
     ide.ele('verProc').txt('1.0').up();
 
-    // EMITENTE
+    // ========== EMITENTE ==========
     const emit = xml.ele('emit');
     emit.ele('CNPJ').txt(emitente.CNPJ).up();
     emit.ele('xNome').txt(emitente.xNome).up();
@@ -110,7 +110,7 @@ function gerarXmlNfe(dados) {
     emit.ele('IE').txt(emitente.IE).up();
     emit.ele('CRT').txt(emitente.CRT).up();
 
-    // DESTINATÁRIO
+    // ========== DESTINATÁRIO ==========
     const dest = xml.ele('dest');
     if (destinatario.CPF) dest.ele('CPF').txt(destinatario.CPF.replace(/\D/g, '')).up();
     else if (destinatario.CNPJ) dest.ele('CNPJ').txt(destinatario.CNPJ.replace(/\D/g, '')).up();
@@ -121,7 +121,7 @@ function gerarXmlNfe(dados) {
     enderDest.ele('xLgr').txt(destinatario.xLgr || 'NÃO INFORMADO').up();
     enderDest.ele('nro').txt(destinatario.nro || 'S/N').up();
     if (destinatario.xBairro) enderDest.ele('xBairro').txt(destinatario.xBairro).up();
-    enderDest.ele('cMun').txt(destinatario.cMun).up();
+    enderDest.ele('cMun').txt(destinatario.cMun || '4101804').up();
     enderDest.ele('xMun').txt(destinatario.xMun).up();
     enderDest.ele('UF').txt(destinatario.UF).up();
     enderDest.ele('CEP').txt(destinatario.CEP || '00000000').up();
@@ -129,7 +129,7 @@ function gerarXmlNfe(dados) {
     enderDest.ele('xPais').txt('BRASIL').up();
     dest.ele('indIEDest').txt('9').up();
 
-    // PRODUTOS
+    // ========== PRODUTOS ==========
     let totalProd = 0;
     produtos.forEach((prod, idx) => {
         const det = xml.ele('det', { nItem: String(idx + 1) });
@@ -160,7 +160,7 @@ function gerarXmlNfe(dados) {
         totalProd += vProd;
     });
 
-    // TOTAL
+    // ========== TOTAL ==========
     const total = xml.ele('total').ele('ICMSTot');
     total.ele('vBC').txt('0.00').up();
     total.ele('vICMS').txt('0.00').up();
@@ -180,24 +180,25 @@ function gerarXmlNfe(dados) {
     total.ele('vPIS').txt('0.00').up();
     total.ele('vCOFINS').txt('0.00').up();
     total.ele('vOutro').txt('0.00').up();
-    total.ele('vTotTrib').txt('0.00').up();   // <-- ELEMENTO OBRIGATÓRIO
+    // CAMPO OBRIGATÓRIO (vTotTrib)
+    total.ele('vTotTrib').txt('0.00').up();
     total.ele('vNF').txt(totalProd.toFixed(2)).up();
 
-    // TRANSPORTE
+    // ========== TRANSPORTE ==========
     const transp = xml.ele('transp');
     transp.ele('modFrete').txt(modFrete).up();
 
-    // PAGAMENTO
+    // ========== PAGAMENTO ==========
     const pag = xml.ele('pag');
     const detPag = pag.ele('detPag');
     detPag.ele('tPag').txt('01').up();
     detPag.ele('vPag').txt(totalProd.toFixed(2)).up();
 
-    // INFORMAÇÕES ADICIONAIS
+    // ========== INFORMAÇÕES ADICIONAIS ==========
     const infAdic = xml.ele('infAdic');
     infAdic.ele('infCpl').txt('Sistema emissor próprio - Wheel Tech Bicycling LTDA').up();
 
-    // RESPONSÁVEL TÉCNICO
+    // ========== RESPONSÁVEL TÉCNICO ==========
     const infRespTec = xml.ele('infRespTec');
     infRespTec.ele('CNPJ').txt('32830261000125').up();
     infRespTec.ele('xContato').txt('WHEEL TECH BICYCLING LTDA').up();
