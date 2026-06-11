@@ -3,8 +3,9 @@ const { SignedXml } = require('xml-crypto');
 function assinarXml(xml, certData) {
     const sig = new SignedXml();
     sig.privateKey = certData.privateKey;
+    // Força os algoritmos padrão da NF-e (SHA-1)
     sig.signatureAlgorithm = 'http://www.w3.org/2000/09/xmldsig#rsa-sha1';
-    sig.canonicalizationAlgorithm = 'http://www.w3.org/TR/2001/REC-xml-c14n-20010315'; // ESSENCIAL
+    sig.canonicalizationAlgorithm = 'http://www.w3.org/TR/2001/REC-xml-c14n-20010315';
     sig.digestAlgorithm = 'http://www.w3.org/2000/09/xmldsig#sha1';
 
     sig.addReference({
@@ -17,13 +18,23 @@ function assinarXml(xml, certData) {
         uri: ''
     });
 
-    sig.getKeyInfoContent = function () {
-        const cert = certData.cert
-            .replace('-----BEGIN CERTIFICATE-----', '')
-            .replace('-----END CERTIFICATE-----', '')
+    // Inclui a cadeia de certificados (se existir)
+    const certPem = certData.cert;
+    let certClean = certPem
+        .replace('-----BEGIN CERTIFICATE-----', '')
+        .replace('-----END CERTIFICATE-----', '')
+        .replace(/\r/g, '')
+        .replace(/\n/g, '');
+    if (certData.ca) {
+        const caClean = certData.ca
+            .replace(/-----BEGIN CERTIFICATE-----/g, '')
+            .replace(/-----END CERTIFICATE-----/g, '')
             .replace(/\r/g, '')
             .replace(/\n/g, '');
-        return `<X509Data><X509Certificate>${cert}</X509Certificate></X509Data>`;
+        certClean = certClean + caClean;
+    }
+    sig.getKeyInfoContent = function () {
+        return `<X509Data><X509Certificate>${certClean}</X509Certificate></X509Data>`;
     };
 
     sig.computeSignature(xml, {

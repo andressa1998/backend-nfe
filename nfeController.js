@@ -134,6 +134,7 @@ async function emitirNFe(req, res) {
 
         // ========== ASSINAR XML ==========
         const certData = loadCertificates();
+        console.log('🔑 Certificado carregado?', !!certData.privateKey, !!certData.cert);
         const xmlAssinado = assinarXml(xml, { privateKey: certData.privateKey, cert: certData.cert });
 
         // Log do XML para depuração
