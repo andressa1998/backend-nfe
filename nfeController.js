@@ -143,6 +143,7 @@ async function emitirNFe(req, res) {
         const nfeService = new NFEService('homologacao'); // altere para 'producao' quando estiver em produção
         const respostaSefaz = await nfeService.sendNFe(xmlAssinado, certData);
         console.log('📨 RESPOSTA SEFAZ (início):', respostaSefaz.substring(0, 1000));
+        console.log(respostaSefaz);
 
         const protocolo = extrairProtocolo(respostaSefaz);
         const chaveAcesso = extrairChaveAcesso(xmlAssinado);
