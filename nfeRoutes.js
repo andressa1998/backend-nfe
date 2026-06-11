@@ -11,11 +11,13 @@ const {
     sincronizarVendasML,
     listarVendasSemNFE,
     listarVendasComNFE,
-    buscarXMLPorChave
+    buscarXMLPorChave,
+    testarEnvioXMLFixo      // função de teste (adicione no controller)
 } = require('./nfeController');
 
 const router = express.Router();
 
+// Rotas principais
 router.post('/emitir', emitirNFe);
 router.post('/cancelar', cancelarNFe);
 router.get('/listar-nfes', listarNFesEmitidas);
@@ -28,5 +30,8 @@ router.post('/sync-vendas', sincronizarVendasML);
 router.get('/vendas-sem-nfe', listarVendasSemNFE);
 router.get('/vendas-com-nfe', listarVendasComNFE);
 router.get('/buscar-xml', buscarXMLPorChave);
+
+// Rota de teste (para enviar XML fixo e diagnosticar problemas)
+router.post('/testar-xml-fixo', testarEnvioXMLFixo);
 
 module.exports = router;

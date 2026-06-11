@@ -487,6 +487,32 @@ function extrairResultadoCancelamento(respostaXml) {
     return { cancelado, cStat, motivo, protocolo };
 }
 
+// ===================== ROTA DE TESTE =====================
+// ===================== ROTA DE TESTE COM XML FIXO =====================
+async function testarEnvioXMLFixo(req, res) {
+    console.log('📨 [TESTE] Enviando XML conhecido (que já funcionou)');
+    try {
+        // XML que você postou no chat (já assinado e válido)
+        const xmlFixo = `<?xml version="1.0" encoding="UTF-8"?><NFe xmlns="http://www.portalfiscal.inf.br/nfe"><infNFe versao="4.00" Id="NFe41260532830261000125550010689436061080227350"><ide><cUF>41</cUF><cNF>08022735</cNF><natOp>VENDA</natOp><mod>55</mod><serie>1</serie><nNF>68943606</nNF><dhEmi>2026-05-07T12:49:03-03:00</dhEmi><tpNF>1</tpNF><idDest>1</idDest><cMunFG>4101804</cMunFG><tpImp>1</tpImp><tpEmis>1</tpEmis><cDV>0</cDV><tpAmb>2</tpAmb><finNFe>1</finNFe><indFinal>1</indFinal><indPres>1</indPres><procEmi>0</procEmi><verProc>1.0</verProc></ide><emit><CNPJ>32830261000125</CNPJ><xNome>WHEEL TECH BICYCLING LTDA</xNome><xFant>WHEEL TECH BICYCLING</xFant><enderEmit><xLgr>RUA LOURENCO JASIOCHA</xLgr><nro>1927</nro><xBairro>CENTRO</xBairro><cMun>4101804</cMun><xMun>ARAUCARIA</xMun><UF>PR</UF><CEP>83702090</CEP><cPais>1058</cPais><xPais>BRASIL</xPais></enderEmit><IE>9087859328</IE><CRT>1</CRT></emit><dest><CPF>47840605885</CPF><xNome>Andressa Miotto</xNome><enderDest><xLgr>Rua Jardineira</xLgr><nro>156</nro><xBairro>Campina da Barra</xBairro><cMun>4101804</cMun><xMun>ARAUCARIA</xMun><UF>PR</UF><CEP>83709310</CEP><cPais>1058</cPais><xPais>BRASIL</xPais></enderDest><indIEDest>9</indIEDest></dest><det nItem="1"><prod><cProd>MLB123456</cProd><cEAN>SEM GTIN</cEAN><xProd>Bicicleta Aro 29</xProd><NCM>87149990</NCM><CFOP>5102</CFOP><uCom>UN</uCom><qCom>1</qCom><vUnCom>150.00</vUnCom><vProd>150.00</vProd><cEANTrib>SEM GTIN</cEANTrib><uTrib>UN</uTrib><qTrib>1</qTrib><vUnTrib>150.00</vUnTrib><indTot>1</indTot></prod><imposto><ICMS><ICMSSN102><orig>0</orig><CSOSN>102</CSOSN></ICMSSN102></ICMS><PIS><PISNT><CST>07</CST></PISNT></PIS><COFINS><COFINSNT><CST>07</CST></COFINSNT></COFINS></imposto></det><total><ICMSTot><vBC>0.00</vBC><vICMS>0.00</vICMS><vICMSDeson>0.00</vICMSDeson><vFCP>0.00</vFCP><vBCST>0.00</vBCST><vST>0.00</vST><vFCPST>0.00</vFCPST><vFCPSTRet>0.00</vFCPSTRet><vProd>150.00</vProd><vFrete>0.00</vFrete><vSeg>0.00</vSeg><vDesc>0.00</vDesc><vII>0.00</vII><vIPI>0.00</vIPI><vIPIDevol>0.00</vIPIDevol><vPIS>0.00</vPIS><vCOFINS>0.00</vCOFINS><vOutro>0.00</vOutro><vTotTrib>0.00</vTotTrib><vNF>150.00</vNF></ICMSTot></total><transp><modFrete>9</modFrete></transp><pag><detPag><tPag>01</tPag><vPag>150.00</vPag></detPag></pag></infNFe><Signature xmlns="http://www.w3.org/2000/09/xmldsig#"><SignedInfo><CanonicalizationMethod Algorithm="http://www.w3.org/TR/2001/REC-xml-c14n-20010315"/><SignatureMethod Algorithm="http://www.w3.org/2001/04/xmldsig-more#rsa-sha256"/><Reference URI="#NFe41260532830261000125550010689436061080227350"><Transforms><Transform Algorithm="http://www.w3.org/2000/09/xmldsig#enveloped-signature"/><Transform Algorithm="http://www.w3.org/TR/2001/REC-xml-c14n-20010315"/></Transforms><DigestMethod Algorithm="http://www.w3.org/2001/04/xmlenc#sha256"/><DigestValue>3dHSok8PS2njXCSdvJlOmSnq6XxcF4nHhHQfcosta1g=</DigestValue></Reference></SignedInfo><SignatureValue>H1+xiyRqFuJcjmAteSsDGo73UozQnKrOO+tcRUv2rvErqqnsaSiPcVExc4qnkVzdBWf6T3UgzLcMDrTV+GqM62Rpl2lxuCy0o9n2quwM2Gw5vGM5Lq4rBx0vVMI3IeIBsRbsa2Uv867fkgPzH0W+4BQy41E/LK9Jt4iNO6mfE95htGZfNrEUISHgE24Y7twOJq7Q1/FAvCc+9kE4qCN44ti6i67kyLS0mu9cdXENzOolNsK0v4HMQ/CTygR0JNNT/Cv6mvy/cYRnhaPTMyq+Ig7/MXBRpQvs3/+DuSgSxh6+o36+GT5Ke0t58N7VCr8/UqOMpqMvzHtKpm4tMmAy8Q==</SignatureValue><KeyInfo><X509Data><X509Certificate>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</X509Certificate></X509Data></KeyInfo></Signature></NFe>`;
+
+        const certData = loadCertificates();
+        const nfeService = new NFEService('homologacao');
+        const resposta = await nfeService.sendNFe(xmlFixo, certData);
+        const protocolo = extrairProtocolo(resposta);
+        
+        res.json({
+            success: !!protocolo,
+            protocolo: protocolo || null,
+            cStat: resposta.match(/<cStat>(\d+)<\/cStat>/)?.[1],
+            xMotivo: resposta.match(/<xMotivo>([^<]+)<\/xMotivo>/)?.[1],
+            respostaCompleta: resposta.substring(0, 1500)
+        });
+    } catch (error) {
+        console.error(error);
+        res.status(500).json({ error: error.message });
+    }
+}
+
 // ===================== EXPORTAÇÃO =====================
 module.exports = {
     emitirNFe,
@@ -500,5 +526,6 @@ module.exports = {
     sincronizarVendasML,
     listarVendasSemNFE,
     listarVendasComNFE,
-    buscarXMLPorChave
+    buscarXMLPorChave,
+    testarEnvioXMLFixo
 };
