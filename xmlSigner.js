@@ -3,8 +3,8 @@ const { SignedXml } = require('xml-crypto');
 function assinarXml(xml, certData) {
     const sig = new SignedXml();
     sig.privateKey = certData.privateKey;
-    // Usando SHA-1 para compatibilidade com a maioria das SEFAZ
     sig.signatureAlgorithm = 'http://www.w3.org/2000/09/xmldsig#rsa-sha1';
+    sig.canonicalizationAlgorithm = 'http://www.w3.org/TR/2001/REC-xml-c14n-20010315'; // ESSENCIAL
     sig.digestAlgorithm = 'http://www.w3.org/2000/09/xmldsig#sha1';
 
     sig.addReference({
