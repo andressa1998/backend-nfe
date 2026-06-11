@@ -1,9 +1,10 @@
 const { SignedXml } = require('xml-crypto');
+const xpath = require('xpath');
+const { DOMParser } = require('@xmldom/xmldom');
 
 function assinarXml(xml, certData) {
     const sig = new SignedXml();
     sig.privateKey = certData.privateKey;
-    // Força os algoritmos padrão da NF-e (SHA-1)
     sig.signatureAlgorithm = 'http://www.w3.org/2000/09/xmldsig#rsa-sha1';
     sig.canonicalizationAlgorithm = 'http://www.w3.org/TR/2001/REC-xml-c14n-20010315';
     sig.digestAlgorithm = 'http://www.w3.org/2000/09/xmldsig#sha1';
@@ -18,7 +19,7 @@ function assinarXml(xml, certData) {
         uri: ''
     });
 
-    // Inclui a cadeia de certificados (se existir)
+    // Inclui todos os certificados da cadeia (se houver)
     const certPem = certData.cert;
     let certClean = certPem
         .replace('-----BEGIN CERTIFICATE-----', '')
@@ -42,6 +43,7 @@ function assinarXml(xml, certData) {
     });
 
     let signedXml = sig.getSignedXml();
+    // Garante o namespace da assinatura
     signedXml = signedXml.replace('<Signature>', '<Signature xmlns="http://www.w3.org/2000/09/xmldsig#">');
     signedXml = signedXml.replace(/xmlns=""/g, '');
     return signedXml;

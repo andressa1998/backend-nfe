@@ -9,7 +9,6 @@ class NFEService {
             this.urlEvento = 'https://nfe.sefa.pr.gov.br/nfe/NFeRecepcaoEvento4';
             this.urlConsulta = 'https://nfe.sefa.pr.gov.br/nfe/NFeConsultaProtocolo4';
         } else {
-            // Homologação Paraná
             this.urlAutorizacao = 'https://homologacao.nfe.sefa.pr.gov.br/nfe/NFeAutorizacao4';
             this.urlEvento = 'https://homologacao.nfe.sefa.pr.gov.br/nfe/NFeRecepcaoEvento4';
             this.urlConsulta = 'https://homologacao.nfe.sefa.pr.gov.br/nfe/NFeConsultaProtocolo4';
@@ -25,7 +24,7 @@ class NFEService {
             ciphers: 'DEFAULT@SECLEVEL=1'
         });
 
-        // Remove prologo XML e espaços
+        // Remove declaração XML e espaços
         let xmlLimpo = xmlAssinado
             .replace(/<\?xml.*?\?>/g, '')
             .replace(/\r/g, '')
@@ -34,7 +33,7 @@ class NFEService {
             .replace(/>\s+</g, '><')
             .trim();
 
-        // SOAP 1.1 (compatível com a maioria dos ambientes)
+        // Envelope SOAP 1.1 (mais compatível)
         const soapEnvelope = `<?xml version="1.0" encoding="utf-8"?>
 <soap:Envelope xmlns:soap="http://schemas.xmlsoap.org/soap/envelope/"
                xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
