@@ -49,6 +49,7 @@ async function emitirNFe(req, res) {
         const { venda_id, cliente, produtos, cfop, natureza_operacao, modalidade_frete, transportadora_id } = dados;
 
         if (!cliente) throw new Error('Cliente não informado');
+        if (!produtos || produtos.length === 0) throw new Error('Nenhum produto informado');
 
         const SELLER_UF = 'PR';
         let buyerUF = (cliente.uf || 'PR').toUpperCase();
@@ -57,10 +58,15 @@ async function emitirNFe(req, res) {
         if (buyerUF !== SELLER_UF && cfop !== '6108')
             throw new Error(`Venda fora do estado (${buyerUF}) exige CFOP 6108.`);
 
-        let documento = cliente.documento || '';
-        let tipoDoc = documento.includes('CNPJ') ? 'CNPJ' : 'CPF';
-        let numeroDoc = documento.replace(/\D/g, '');
+        // ========== TRATAMENTO DO CPF/CNPJ ==========
+        let documento = (cliente.documento || '').replace(/\D/g, '');
+        if (!documento || documento.length === 0) {
+            console.warn('⚠️ Documento do cliente não informado. A emissão exige CPF/CNPJ válido.');
+            throw new Error('CPF ou CNPJ do destinatário não informado. Verifique os dados da venda.');
+        }
+        let tipoDoc = (documento.length === 14) ? 'CNPJ' : 'CPF';
 
+        // ========== DADOS DO DESTINATÁRIO ==========
         const logradouro = cliente.endereco || cliente.logradouro || 'NÃO INFORMADO';
         const numero = cliente.numero || 'S/N';
         const bairro = cliente.bairro || 'CENTRO';
@@ -69,9 +75,7 @@ async function emitirNFe(req, res) {
         let cep = (cliente.cep || '83702090').replace(/\D/g, '');
 
         const destinatario = {
-            CPF: tipoDoc === 'CPF' ? numeroDoc : undefined,
-            CNPJ: tipoDoc === 'CNPJ' ? numeroDoc : undefined,
-            xNome: cliente.nome || 'Cliente não identificado',
+            xNome: cliente.nome || 'Consumidor Final',
             xLgr: logradouro,
             nro: numero,
             xBairro: bairro,
@@ -80,8 +84,13 @@ async function emitirNFe(req, res) {
             CEP: cep,
             cMun: await obterCodigoMunicipio(cidade, uf, cep)
         };
+        if (tipoDoc === 'CPF') {
+            destinatario.CPF = documento;
+        } else {
+            destinatario.CNPJ = documento;
+        }
 
-        // Controle sequencial da NF
+        // ========== CONTROLE SEQUENCIAL DA NF ==========
         const serie = 1;
         let nNF = null;
         for (let i = 0; i < 5; i++) {
@@ -105,7 +114,7 @@ async function emitirNFe(req, res) {
         }
         if (!nNF) nNF = Math.floor(Math.random() * 900000000) + 100000000;
 
-        // Gerar XML
+        // ========== GERAR XML ==========
         const xml = gerarXmlNfe({
             nNF, serie, destinatario, produtos, cfop,
             natOp: natureza_operacao || 'VENDA',
@@ -113,10 +122,12 @@ async function emitirNFe(req, res) {
             valor_total: produtos.reduce((sum, p) => sum + (p.quantidade * p.valor_unitario), 0)
         });
 
+        // ========== ASSINAR XML ==========
         const certData = loadCertificates();
         const xmlAssinado = assinarXml(xml, { privateKey: certData.privateKey, cert: certData.cert });
 
-        const nfeService = new NFEService('homologacao');
+        // ========== ENVIAR PARA SEFAZ ==========
+        const nfeService = new NFEService('homologacao'); // use 'producao' quando estiver em produção
         const respostaSefaz = await nfeService.sendNFe(xmlAssinado, certData);
         const protocolo = extrairProtocolo(respostaSefaz);
         const chaveAcesso = extrairChaveAcesso(xmlAssinado);
@@ -124,9 +135,9 @@ async function emitirNFe(req, res) {
         if (!protocolo) throw new Error('SEFAZ não retornou protocolo');
         console.log('✅ NF-e autorizada. Protocolo:', protocolo);
 
-        // Salvar NF-e no banco
+        // ========== SALVAR NF-e NO SUPABASE ==========
         const valorTotal = produtos.reduce((sum, p) => sum + (p.quantidade * p.valor_unitario), 0);
-        await supabase.from('nfe_emitidas').insert({
+        const { error: insertError } = await supabase.from('nfe_emitidas').insert({
             venda_id: venda_id || null,
             chave: chaveAcesso,
             protocolo: protocolo,
@@ -137,10 +148,11 @@ async function emitirNFe(req, res) {
             transportadora_id: transportadora_id || null,
             valor_total: valorTotal
         });
+        if (insertError) console.warn('Erro ao salvar NF-e no Supabase:', insertError);
 
-        // Atualizar venda (se for uma venda existente)
+        // ========== ATUALIZAR VENDA (se existir) ==========
         if (venda_id) {
-            await supabase
+            const { error: updateError } = await supabase
                 .from('vendas_ml')
                 .update({
                     nfe_emitida: true,
@@ -149,6 +161,7 @@ async function emitirNFe(req, res) {
                     data_emissao: new Date().toISOString()
                 })
                 .eq('id', venda_id);
+            if (updateError) console.warn('Erro ao atualizar venda:', updateError);
         }
 
         res.json({ success: true, protocolo, chaveAcesso });
