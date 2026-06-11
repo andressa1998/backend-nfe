@@ -1,13 +1,12 @@
 const { SignedXml } = require('xml-crypto');
-const xpath = require('xpath');
-const { DOMParser } = require('@xmldom/xmldom');
 
 function assinarXml(xml, certData) {
     const sig = new SignedXml();
     sig.privateKey = certData.privateKey;
-    sig.signatureAlgorithm = 'http://www.w3.org/2000/09/xmldsig#rsa-sha1';
+    // Usar os mesmos algoritmos do XML que funcionou
+    sig.signatureAlgorithm = 'http://www.w3.org/2001/04/xmldsig-more#rsa-sha256';
     sig.canonicalizationAlgorithm = 'http://www.w3.org/TR/2001/REC-xml-c14n-20010315';
-    sig.digestAlgorithm = 'http://www.w3.org/2000/09/xmldsig#sha1';
+    sig.digestAlgorithm = 'http://www.w3.org/2001/04/xmlenc#sha256';
 
     sig.addReference({
         xpath: "//*[local-name(.)='infNFe']",
@@ -15,25 +14,17 @@ function assinarXml(xml, certData) {
             'http://www.w3.org/2000/09/xmldsig#enveloped-signature',
             'http://www.w3.org/TR/2001/REC-xml-c14n-20010315'
         ],
-        digestAlgorithm: 'http://www.w3.org/2000/09/xmldsig#sha1',
+        digestAlgorithm: 'http://www.w3.org/2001/04/xmlenc#sha256',
         uri: ''
     });
 
-    // Inclui todos os certificados da cadeia (se houver)
-    const certPem = certData.cert;
-    let certClean = certPem
+    // Incluir o certificado (sem a cadeia, como no exemplo)
+    const certClean = certData.cert
         .replace('-----BEGIN CERTIFICATE-----', '')
         .replace('-----END CERTIFICATE-----', '')
         .replace(/\r/g, '')
         .replace(/\n/g, '');
-    if (certData.ca) {
-        const caClean = certData.ca
-            .replace(/-----BEGIN CERTIFICATE-----/g, '')
-            .replace(/-----END CERTIFICATE-----/g, '')
-            .replace(/\r/g, '')
-            .replace(/\n/g, '');
-        certClean = certClean + caClean;
-    }
+    
     sig.getKeyInfoContent = function () {
         return `<X509Data><X509Certificate>${certClean}</X509Certificate></X509Data>`;
     };
@@ -43,7 +34,6 @@ function assinarXml(xml, certData) {
     });
 
     let signedXml = sig.getSignedXml();
-    // Garante o namespace da assinatura
     signedXml = signedXml.replace('<Signature>', '<Signature xmlns="http://www.w3.org/2000/09/xmldsig#">');
     signedXml = signedXml.replace(/xmlns=""/g, '');
     return signedXml;

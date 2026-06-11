@@ -1,3 +1,4 @@
+// nfeController.js - Emissão, Cancelamento, Listagem, Consulta, Avulsa, Sincronização ML
 const { gerarXmlNfe } = require('./xmlBuilder');
 const { assinarXml } = require('./xmlSigner');
 const NFEService = require('./nfeService');
@@ -5,10 +6,12 @@ const { loadCertificates } = require('./utils');
 const supabase = require('./supabaseClient');
 const { extrairProtocolo, extrairChaveAcesso } = require('./nfeUtils');
 
-const DEFAULT_IBGE = '4101804'; // Araucária/PR
+const DEFAULT_IBGE = '4101804'; // Araucária/PR (fallback)
 
+// ===================== OBTER CÓDIGO IBGE =====================
 async function obterCodigoMunicipio(nomeCidade, uf, cep = null) {
     try {
+        // 1. Busca no Supabase (case-insensitive)
         const { data, error } = await supabase
             .from('municipios')
             .select('codigo_ibge')
@@ -18,6 +21,8 @@ async function obterCodigoMunicipio(nomeCidade, uf, cep = null) {
         if (data && !error && data.codigo_ibge) {
             return String(data.codigo_ibge);
         }
+
+        // 2. Fallback via BrasilAPI (se tiver CEP)
         if (cep) {
             const fetch = require('node-fetch');
             const cepLimpo = cep.replace(/\D/g, '');
@@ -26,6 +31,7 @@ async function obterCodigoMunicipio(nomeCidade, uf, cep = null) {
                 const json = await response.json();
                 if (json.ibge_code) {
                     const ibge = String(json.ibge_code);
+                    // Salva para futuras consultas
                     await supabase.from('municipios').upsert({
                         codigo_ibge: parseInt(ibge),
                         nome: json.city,
@@ -35,13 +41,40 @@ async function obterCodigoMunicipio(nomeCidade, uf, cep = null) {
                 }
             }
         }
+
+        // 3. Fallback final
+        console.warn(`⚠️ IBGE não encontrado para ${nomeCidade}/${uf}, usando padrão ${DEFAULT_IBGE}`);
         return DEFAULT_IBGE;
     } catch (error) {
-        console.warn('Erro ao obter IBGE, usando padrão:', error.message);
+        console.error('❌ Erro ao obter IBGE:', error);
         return DEFAULT_IBGE;
     }
 }
 
+// ===================== IMPORTAR NF-e NO ML =====================
+async function importarNFEnoML(shipment_id, xml, token) {
+    if (!shipment_id) return { ok: true };
+    const url = `https://api.mercadolibre.com/shipments/${shipment_id}/invoice_data?siteId=MLB`;
+    const fetch = require('node-fetch');
+    try {
+        const response = await fetch(url, {
+            method: 'POST',
+            headers: { 'Authorization': `Bearer ${token}`, 'Content-Type': 'application/xml' },
+            body: xml
+        });
+        if (!response.ok) {
+            const text = await response.text();
+            console.warn(`❌ ML retornou erro ${response.status}: ${text.substring(0, 200)}`);
+            return { ok: false };
+        }
+        return { ok: true, xml_url: response.headers.get('location') };
+    } catch (error) {
+        console.warn('Erro ao importar NF-e no ML (não crítico):', error.message);
+        return { ok: false };
+    }
+}
+
+// ===================== EMISSÃO DE NF-e =====================
 async function emitirNFe(req, res) {
     console.log('📨 Requisição de emissão recebida');
     try {
@@ -61,7 +94,7 @@ async function emitirNFe(req, res) {
         // ========== TRATAMENTO DO CPF/CNPJ ==========
         let documento = (cliente.documento || '').replace(/\D/g, '');
         if (!documento || (documento.length !== 11 && documento.length !== 14)) {
-            console.warn('⚠️ Documento inválido ou não informado, usando CPF genérico para homologação');
+            console.warn('⚠️ Documento inválido, usando CPF genérico para homologação');
             documento = '99999999999';
         }
         let tipoDoc = (documento.length === 14) ? 'CNPJ' : 'CPF';
@@ -75,13 +108,12 @@ async function emitirNFe(req, res) {
         let cep = (cliente.cep || '83702090').replace(/\D/g, '');
         if (cep.length !== 8) cep = '83702090';
 
-        // Código IBGE (com fallback para Araucária/PR)
-        let codigoIbge = '4101804';
+        // Obter código IBGE (com fallback)
+        let codigoIbge = DEFAULT_IBGE;
         try {
-            const ibge = await obterCodigoMunicipio(cidade, uf, cep);
-            if (ibge) codigoIbge = ibge;
+            codigoIbge = await obterCodigoMunicipio(cidade, uf, cep);
         } catch (err) {
-            console.warn('Erro ao obter IBGE, usando padrão 4101804:', err.message);
+            console.warn('Erro ao obter IBGE, usando padrão:', err.message);
         }
 
         const destinatario = {
@@ -137,14 +169,13 @@ async function emitirNFe(req, res) {
         console.log('🔑 Certificado carregado?', !!certData.privateKey, !!certData.cert);
         const xmlAssinado = assinarXml(xml, { privateKey: certData.privateKey, cert: certData.cert });
 
-        // Log do XML para depuração
+        // Log do XML para depuração (primeiras linhas)
         console.log('📄 XML ASSINADO (primeiros 800 caracteres):', xmlAssinado.substring(0, 800));
 
         // ========== ENVIAR PARA SEFAZ ==========
-        const nfeService = new NFEService('homologacao'); // altere para 'producao' quando estiver em produção
+        const nfeService = new NFEService('homologacao'); // altere para 'producao' quando for produção
         const respostaSefaz = await nfeService.sendNFe(xmlAssinado, certData);
         console.log('📨 RESPOSTA SEFAZ (início):', respostaSefaz.substring(0, 1000));
-        console.log(respostaSefaz);
 
         const protocolo = extrairProtocolo(respostaSefaz);
         const chaveAcesso = extrairChaveAcesso(xmlAssinado);
@@ -186,6 +217,7 @@ async function emitirNFe(req, res) {
     }
 }
 
+// ===================== CANCELAMENTO DE NF-e =====================
 async function cancelarNFe(req, res) {
     console.log('📨 Requisição de cancelamento recebida');
     try {
@@ -240,6 +272,7 @@ async function cancelarNFe(req, res) {
     }
 }
 
+// ===================== LISTAR NF-ES EMITIDAS =====================
 async function listarNFesEmitidas(req, res) {
     try {
         const { data, error } = await supabase
@@ -253,6 +286,7 @@ async function listarNFesEmitidas(req, res) {
     }
 }
 
+// ===================== TRANSPORTADORAS =====================
 async function listarTransportadoras(req, res) {
     try {
         const { data, error } = await supabase.from('transportadoras').select('*').order('nome');
@@ -275,6 +309,7 @@ async function cadastrarTransportadora(req, res) {
     }
 }
 
+// ===================== CLIENTES =====================
 async function listarClientes(req, res) {
     try {
         const { data, error } = await supabase.from('clientes').select('*').order('nome');
@@ -285,14 +320,23 @@ async function listarClientes(req, res) {
     }
 }
 
+// ===================== EMISSÃO AVULSA =====================
 async function emitirNFEAvulsa(req, res) {
     try {
         const { cliente, produtos, cfop, natureza_operacao, modalidade_frete, transportadora_id } = req.body;
         if (!cliente || !produtos || !produtos.length) throw new Error('Dados incompletos');
-        // Reutiliza a função emitirNFe com venda_id = null
+        const dados = {
+            venda_id: null,
+            cliente,
+            produtos,
+            cfop,
+            natureza_operacao: natureza_operacao || 'VENDA',
+            modalidade_frete: modalidade_frete || '9',
+            transportadora_id
+        };
         const emitResult = await new Promise((resolve, reject) => {
             emitirNFe({
-                body: { venda_id: null, cliente, produtos, cfop, natureza_operacao, modalidade_frete, transportadora_id },
+                body: dados,
                 json: resolve,
                 status: (code) => ({ json: (obj) => reject({ status: code, ...obj }) })
             }, {
@@ -307,6 +351,7 @@ async function emitirNFEAvulsa(req, res) {
     }
 }
 
+// ===================== CONSULTAR STATUS =====================
 async function consultarStatusNFE(req, res) {
     try {
         const { chaveAcesso } = req.body;
@@ -322,19 +367,15 @@ async function consultarStatusNFE(req, res) {
     }
 }
 
-// ========== FUNÇÃO CORRIGIDA PARA LISTAR VENDAS SEM NF-E ==========
+// ===================== VENDAS SEM NF-e (listagem) =====================
 async function listarVendasSemNFE(req, res) {
     try {
         const { data, error } = await supabase
             .from('vendas_ml')
             .select('id, cliente, sku, valor_total, data_venda, dados_completos, meio_envio')
             .eq('nfe_emitida', false);
-
         if (error) throw error;
-        if (!data || data.length === 0) {
-            return res.json([]);
-        }
-
+        if (!data) return res.json([]);
         const vendas = data.map(v => ({
             id: v.id,
             order_id: String(v.id),
@@ -342,12 +383,12 @@ async function listarVendasSemNFE(req, res) {
             sku: v.sku,
             valor_total: v.valor_total,
             data_venda: v.data_venda,
-            produtos: v.dados_completos, // <-- usa a coluna correta
+            produtos: v.dados_completos,
             meio_envio: v.meio_envio
         }));
         res.json(vendas);
     } catch (error) {
-        console.error('Erro em listarVendasSemNFE:', error);
+        console.error('Erro listarVendasSemNFE:', error);
         res.status(500).json({ error: error.message });
     }
 }
@@ -381,12 +422,12 @@ async function buscarXMLPorChave(req, res) {
     }
 }
 
-// Sincronização desabilitada no backend
+// ===================== SINCRONIZAÇÃO (desabilitada no backend) =====================
 async function sincronizarVendasML(req, res) {
-    res.status(200).json({ success: false, message: 'Use o frontend (módulo de Vendas ML) para sincronizar as vendas.' });
+    res.status(200).json({ success: false, message: 'Sincronize via frontend' });
 }
 
-// Funções auxiliares para cancelamento
+// ===================== FUNÇÕES AUXILIARES (cancelamento) =====================
 function montarXmlCancelamento(chaveAcesso, protocolo, justificativa, nSeqEvento) {
     const now = new Date();
     const dhEvento = now.toISOString().replace(/\.\d{3}Z$/, '-03:00');
@@ -429,13 +470,8 @@ function assinarXmlEvento(xml, certData) {
         digestAlgorithm: 'http://www.w3.org/2000/09/xmldsig#sha1',
         uri: ''
     });
-    sig.getKeyInfoContent = function () {
-        const cert = certData.cert
-            .replace('-----BEGIN CERTIFICATE-----', '')
-            .replace('-----END CERTIFICATE-----', '')
-            .replace(/\r/g, '').replace(/\n/g, '');
-        return `<X509Data><X509Certificate>${cert}</X509Certificate></X509Data>`;
-    };
+    const cert = certData.cert.replace(/-----BEGIN CERTIFICATE-----|-----END CERTIFICATE-----|\r|\n/g, '');
+    sig.getKeyInfoContent = () => `<X509Data><X509Certificate>${cert}</X509Certificate></X509Data>`;
     sig.computeSignature(xml, { location: { reference: "//*[local-name(.)='infEvento']", action: 'after' } });
     let signedXml = sig.getSignedXml();
     signedXml = signedXml.replace('<Signature>', '<Signature xmlns="http://www.w3.org/2000/09/xmldsig#">');
@@ -451,6 +487,7 @@ function extrairResultadoCancelamento(respostaXml) {
     return { cancelado, cStat, motivo, protocolo };
 }
 
+// ===================== EXPORTAÇÃO =====================
 module.exports = {
     emitirNFe,
     cancelarNFe,
