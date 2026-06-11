@@ -561,8 +561,10 @@ async function sincronizarVendasML(req, res) {
         console.error('❌ Erro ao sincronizar vendas:', error);
         res.status(500).json({ success: false, error: error.message });
     }
+    console.log('🔄 Sincronização de vendas desabilitada no back-end. Use o front-end para sincronizar.');
+    res.json({ success: true, message: 'Sincronização deve ser feita pelo front-end', novas: 0 });
 }
-
+// ===================== Listar vendas sem NF-e =====================
 // ===================== Listar vendas sem NF-e =====================
 async function listarVendasSemNFE(req, res) {
     try {
