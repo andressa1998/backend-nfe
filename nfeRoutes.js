@@ -22,7 +22,7 @@ const {
     testarEnvioXMLFixo
 } = require('./nfeController');
 
-// Função auxiliar para carregar certificado (mesmo do nfeController)
+// Funções auxiliares
 const { loadCertificates } = require('./utils');
 const { gerarXmlNfe } = require('./xmlBuilder');
 const { assinarXml } = require('./xmlSigner');
@@ -44,10 +44,10 @@ router.get('/vendas-com-nfe', listarVendasComNFE);
 router.get('/buscar-xml', buscarXMLPorChave);
 router.post('/testar-xml-fixo', testarEnvioXMLFixo);
 
-// ===================== ROTA DE TESTE: ENVELOPE SOAP COMPLETO =====================
+// ===================== ROTA DE TESTE: ENVELOPE SOAP (exibido no navegador) =====================
 router.get('/testar-soap-envelope', async (req, res) => {
     try {
-        // Dados fixos para teste (usando os mesmos do XML que já funcionou)
+        // Dados fixos para teste (os mesmos do XML que já funcionou)
         const certData = loadCertificates();
 
         const xml = gerarXmlNfe({
@@ -88,13 +88,11 @@ router.get('/testar-soap-envelope', async (req, res) => {
         // Monta o envelope SOAP exatamente como será enviado
         const soapEnvelope = `<?xml version="1.0" encoding="utf-8"?><soap:Envelope xmlns:soap="http://schemas.xmlsoap.org/soap/envelope/" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xmlns:xsd="http://www.w3.org/2001/XMLSchema"><soap:Body><nfeDadosMsg xmlns="http://www.portalfiscal.inf.br/nfe/wsdl/NFeAutorizacao4">${xmlLimpo}</nfeDadosMsg></soap:Body></soap:Envelope>`;
 
-        // Salva em arquivo para download
-        const filePath = '/tmp/soap_envelope.xml';
-        fs.writeFileSync(filePath, soapEnvelope, 'utf8');
+        // Salva em arquivo (opcional, para debug)
+        fs.writeFileSync('/tmp/soap_envelope.xml', soapEnvelope, 'utf8');
 
-        // Envia o arquivo para download
-        res.setHeader('Content-Type', 'application/xml');
-        res.setHeader('Content-Disposition', 'attachment; filename="soap_envelope.xml"');
+        // Exibe o XML no navegador (content-type texto puro, para fácil cópia)
+        res.setHeader('Content-Type', 'text/plain; charset=utf-8');
         res.send(soapEnvelope);
     } catch (error) {
         console.error('Erro ao gerar envelope SOAP:', error);
@@ -102,7 +100,7 @@ router.get('/testar-soap-envelope', async (req, res) => {
     }
 });
 
-// ===================== ROTA PARA BAIXAR O ÚLTIMO XML =====================
+// ===================== ROTA PARA BAIXAR O ÚLTIMO XML GERADO =====================
 router.get('/ultimo-xml', (req, res) => {
     const xmlPath = '/tmp/nfe_enviada.xml';
     if (fs.existsSync(xmlPath)) {
