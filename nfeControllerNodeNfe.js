@@ -44,6 +44,7 @@ async function emitirNFe(req, res) {
         const cfopFinal = cfop || (isMesmaUF ? '5102' : '6108');
         const valorTotal = produtos.reduce((sum, p) => sum + (p.quantidade * p.valor_unitario), 0);
 
+        // Dados da NF-e (mesmo padrão já testado)
         const dadosNFe = {
             ide: {
                 cUF: 41,
@@ -91,7 +92,7 @@ async function emitirNFe(req, res) {
                     xLgr: cliente.endereco,
                     nro: cliente.numero || 'S/N',
                     xBairro: cliente.bairro || 'Centro',
-                    cMun: cliente.codigo_ibge || 2800308, // fallback Aracaju
+                    cMun: cliente.codigo_ibge || 2800308,
                     xMun: cliente.cidade,
                     UF: cliente.uf,
                     CEP: cliente.cep.replace(/\D/g, ''),
@@ -119,6 +120,7 @@ async function emitirNFe(req, res) {
                     indTot: 1
                 },
                 imposto: {
+                    vTotTrib: 0,
                     ICMS: { ICMSSN102: { orig: 0, CSOSN: '102' } },
                     PIS: { PISOutr: { CST: '49', vBC: prod.quantidade * prod.valor_unitario, pPIS: '0.0000', vPIS: '0.00' } },
                     COFINS: { COFINSOutr: { CST: '49', vBC: prod.quantidade * prod.valor_unitario, pCOFINS: '0.0000', vCOFINS: '0.00' } }
@@ -162,21 +164,27 @@ async function emitirNFe(req, res) {
             }
         };
 
-        const resultado = await nfe.emitir(dadosNFe);
-        console.log('Resultado node-nfe:', resultado);
+        // Gera o XML
+        const xml = await nfe.gerarXml(dadosNFe);
+        console.log('XML gerado com sucesso');
 
-        if (resultado.retorno.cStat !== '100') {
-            throw new Error(`SEFAZ rejeitou: ${resultado.retorno.xMotivo} (cStat=${resultado.retorno.cStat})`);
+        // Envia para a SEFAZ
+        const resultado = await nfe.enviar(xml);
+        console.log('Resultado da SEFAZ:', resultado);
+
+        if (!resultado || resultado.retorno.cStat !== '100') {
+            throw new Error(`SEFAZ rejeitou: ${resultado?.retorno?.xMotivo || 'Erro desconhecido'} (cStat=${resultado?.retorno?.cStat || '?'})`);
         }
 
         const chaveAcesso = resultado.retorno.chNFe;
         const protocolo = resultado.retorno.nProt;
 
+        // Salva no Supabase
         await supabase.from('nfe_emitidas').insert({
             venda_id: venda_id || null,
             chave: chaveAcesso,
             protocolo: protocolo,
-            xml: resultado.xml,
+            xml: xml,
             status: 'autorizada',
             cancelada: false,
             data_emissao: new Date().toISOString(),
