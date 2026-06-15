@@ -1,10 +1,9 @@
 // nfeControllerNodeNfe.js
-const { NFe, AMBIENTE_HOMOLOGACAO } = require('node-nfe');
-const supabase = require('./supabaseClient');
 const { gerarXmlNfe } = require('./xmlBuilder');
 const { assinarXml } = require('./xmlSigner');
 const { loadCertificates } = require('./utils');
 const NFEService = require('./nfeService');
+const supabase = require('./supabaseClient');
 
 async function getNextNFNumber(serie = 1) {
     try {
@@ -36,10 +35,7 @@ async function emitirNFe(req, res) {
         const nNF = await getNextNFNumber();
         console.log(`✅ Número NF alocado: ${nNF}`);
 
-        // Prepara os dados para o XML (reutilizando o xmlBuilder original)
-        const isMesmaUF = (cliente.uf === 'PR');
-        const cfopFinal = cfop || (isMesmaUF ? '5102' : '6108');
-
+        // Prepara dados do destinatário
         let documento = (cliente.documento || '').replace(/\D/g, '');
         if (!documento || (documento.length !== 11 && documento.length !== 14)) {
             console.warn('⚠️ Documento inválido, usando CPF genérico para homologação');
@@ -63,9 +59,11 @@ async function emitirNFe(req, res) {
             destinatario.CNPJ = documento;
         }
 
+        const isMesmaUF = (destinatario.UF === 'PR');
+        const cfopFinal = cfop || (isMesmaUF ? '5102' : '6108');
         const valorTotal = produtos.reduce((sum, p) => sum + (p.quantidade * p.valor_unitario), 0);
 
-        // Gera o XML usando o builder original (já testado)
+        // Gera XML
         const xml = gerarXmlNfe({
             nNF,
             serie: 1,
@@ -77,40 +75,20 @@ async function emitirNFe(req, res) {
             valor_total: valorTotal
         });
 
-        // Assina o XML com o certificado (já testado)
+        // Assina XML
         const certData = loadCertificates();
         const xmlAssinado = assinarXml(xml, { privateKey: certData.privateKey, cert: certData.cert });
 
-        // Tenta enviar via node-nfe primeiro, se falhar usa o NFEService antigo
-        let respostaSefaz;
-        try {
-            // Tenta usar o método de envio da node-nfe (se existir)
-            const pfxBase64 = process.env.PFX_BASE64;
-            const pfxPassword = process.env.PFX_PASSWORD;
-            const pfxBuffer = Buffer.from(pfxBase64, 'base64');
+        // 🔥 LOG DO XML COMPLETO NOS LOGS DO RENDER (gratuito)
+        console.log('========== XML COMPLETO (copie para testar no Insomnia) ==========');
+        console.log(xmlAssinado);
+        console.log('==================================================================');
 
-            const nfe = new NFe({
-                ambiente: AMBIENTE_HOMOLOGACAO,
-                certificado: {
-                    pfx: pfxBuffer,
-                    senha: pfxPassword
-                }
-            });
+        // Envia para SEFAZ usando NFEService (já ajustado)
+        const nfeService = new NFEService('homologacao');
+        const respostaSefaz = await nfeService.sendNFe(xmlAssinado, certData);
 
-            // Verifica se existe o método 'enviar'
-            if (typeof nfe.enviar === 'function') {
-                respostaSefaz = await nfe.enviar(xmlAssinado);
-            } else {
-                throw new Error('Método enviar não encontrado na node-nfe');
-            }
-        } catch (nodeNfeError) {
-            console.warn('⚠️ Falha ao usar node-nfe, caindo para NFEService manual:', nodeNfeError.message);
-            // Fallback: usa o NFEService que já existe
-            const nfeService = new NFEService('homologacao');
-            respostaSefaz = await nfeService.sendNFe(xmlAssinado, certData);
-        }
-
-        // Extrai protocolo e chave
+        // Extrai resultado
         const protocoloMatch = respostaSefaz.match(/<nProt[^>]*>(\d+)<\/nProt>/i);
         const cStatMatch = respostaSefaz.match(/<cStat[^>]*>(\d+)<\/cStat>/i);
         const xMotivoMatch = respostaSefaz.match(/<xMotivo[^>]*>([^<]+)<\/xMotivo>/i);

@@ -17,7 +17,6 @@ const {
 
 const router = express.Router();
 
-// Rotas principais
 router.post('/emitir', emitirNFe);
 router.post('/cancelar', cancelarNFe);
 router.get('/listar-nfes', listarNFesEmitidas);
@@ -30,8 +29,19 @@ router.post('/sync-vendas', sincronizarVendasML);
 router.get('/vendas-sem-nfe', listarVendasSemNFE);
 router.get('/vendas-com-nfe', listarVendasComNFE);
 router.get('/buscar-xml', buscarXMLPorChave);
-
-// Rota de teste (XML fixo)
 router.post('/testar-xml-fixo', testarEnvioXMLFixo);
+
+// 🔥 ROTA TEMPORÁRIA PARA BAIXAR O ÚLTIMO XML GERADO (via navegador)
+router.get('/ultimo-xml', (req, res) => {
+    const fs = require('fs');
+    const path = '/tmp/nfe_enviada.xml';
+    if (fs.existsSync(path)) {
+        const xml = fs.readFileSync(path, 'utf8');
+        res.setHeader('Content-Type', 'application/xml');
+        res.send(xml);
+    } else {
+        res.status(404).send('Nenhum XML gerado ainda. Tente emitir uma NF-e primeiro.');
+    }
+});
 
 module.exports = router;
