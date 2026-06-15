@@ -24,6 +24,8 @@ const {
 
 // Função auxiliar para carregar certificado (mesmo do nfeController)
 const { loadCertificates } = require('./utils');
+const { gerarXmlNfe } = require('./xmlBuilder');
+const { assinarXml } = require('./xmlSigner');
 
 const router = express.Router();
 
@@ -42,72 +44,60 @@ router.get('/vendas-com-nfe', listarVendasComNFE);
 router.get('/buscar-xml', buscarXMLPorChave);
 router.post('/testar-xml-fixo', testarEnvioXMLFixo);
 
-// ===================== ROTA DE TESTE: XML PURO =====================
-router.post('/testar-xml-raw', async (req, res) => {
-    console.log('📨 Rota /testar-xml-raw chamada');
+// ===================== ROTA DE TESTE: ENVELOPE SOAP COMPLETO =====================
+router.get('/testar-soap-envelope', async (req, res) => {
     try {
-        const xmlPath = '/tmp/nfe_enviada.xml';
-        console.log('Procurando XML em:', xmlPath);
-        if (!fs.existsSync(xmlPath)) {
-            console.log('XML não encontrado');
-            return res.status(404).json({ error: 'Nenhum XML gerado ainda. Emita uma NF-e primeiro.' });
-        }
-        const xml = fs.readFileSync(xmlPath, 'utf8');
-        console.log('XML lido, tamanho:', xml.length);
+        // Dados fixos para teste (usando os mesmos do XML que já funcionou)
+        const certData = loadCertificates();
 
-        // Carrega o certificado usando a mesma função que já funciona
-        let certData;
-        try {
-            certData = loadCertificates();
-            console.log('Certificado carregado? cert:', !!certData.cert, 'key:', !!certData.privateKey);
-        } catch (err) {
-            console.error('Erro ao carregar certificado:', err);
-            return res.status(500).json({ error: 'Erro ao carregar certificado: ' + err.message });
-        }
-
-        const httpsAgent = new https.Agent({
-            cert: certData.cert,
-            key: certData.privateKey,
-            ca: certData.ca || undefined,
-            rejectUnauthorized: false,
-            secureProtocol: 'TLSv1_2_method',
-            ciphers: 'DEFAULT@SECLEVEL=1'
+        const xml = gerarXmlNfe({
+            nNF: 50038,
+            serie: 1,
+            destinatario: {
+                CPF: '47840605885',
+                xNome: 'Andressa Miotto',
+                xLgr: 'Rua Jardineira',
+                nro: '156',
+                xBairro: 'Campina da Barra',
+                xMun: 'ARAUCARIA',
+                UF: 'PR',
+                CEP: '83709310',
+                cMun: '4101804'
+            },
+            produtos: [{
+                nome: 'Bicicleta Aro 29',
+                quantidade: 1,
+                valor_unitario: 150.00,
+                sku: 'MLB123456'
+            }],
+            cfop: '5102',
+            natOp: 'VENDA',
+            modFrete: '9'
         });
 
-        console.log('Enviando XML para SEFAZ...');
-        const response = await axios.post(
-            'https://homologacao.nfe.sefa.pr.gov.br/nfe/NFeAutorizacao4',
-            xml,
-            {
-                httpsAgent,
-                headers: {
-                    'Content-Type': 'text/xml; charset=utf-8',
-                    'SOAPAction': 'http://www.portalfiscal.inf.br/nfe/wsdl/NFeAutorizacao4/nfeDadosMsg'
-                },
-                timeout: 60000
-            }
-        );
-        console.log('Resposta da SEFAZ recebida, status:', response.status);
+        const xmlAssinado = assinarXml(xml, certData);
 
-        const cStatMatch = response.data.match(/<cStat>(\d+)<\/cStat>/);
-        const xMotivoMatch = response.data.match(/<xMotivo>([^<]+)<\/xMotivo>/);
-        const protocoloMatch = response.data.match(/<nProt>(\d+)<\/nProt>/);
+        // Limpa o XML (remove declaração, quebras de linha, espaços entre tags)
+        const xmlLimpo = xmlAssinado
+            .replace(/<\?xml.*?\?>/g, '')
+            .replace(/\r?\n/g, '')
+            .replace(/\t/g, '')
+            .replace(/>\s+</g, '><')
+            .trim();
 
-        res.json({
-            cStat: cStatMatch ? cStatMatch[1] : null,
-            xMotivo: xMotivoMatch ? xMotivoMatch[1] : null,
-            protocolo: protocoloMatch ? protocoloMatch[1] : null,
-            resposta_completa: response.data.substring(0, 2000)
-        });
+        // Monta o envelope SOAP exatamente como será enviado
+        const soapEnvelope = `<?xml version="1.0" encoding="utf-8"?><soap:Envelope xmlns:soap="http://schemas.xmlsoap.org/soap/envelope/" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xmlns:xsd="http://www.w3.org/2001/XMLSchema"><soap:Body><nfeDadosMsg xmlns="http://www.portalfiscal.inf.br/nfe/wsdl/NFeAutorizacao4">${xmlLimpo}</nfeDadosMsg></soap:Body></soap:Envelope>`;
+
+        // Salva em arquivo para download
+        const filePath = '/tmp/soap_envelope.xml';
+        fs.writeFileSync(filePath, soapEnvelope, 'utf8');
+
+        // Envia o arquivo para download
+        res.setHeader('Content-Type', 'application/xml');
+        res.setHeader('Content-Disposition', 'attachment; filename="soap_envelope.xml"');
+        res.send(soapEnvelope);
     } catch (error) {
-        console.error('Erro na rota /testar-xml-raw:', error);
-        if (error.response) {
-            console.error('Resposta de erro da SEFAZ (primeiros 1000 chars):', error.response.data?.substring(0, 1000));
-            return res.status(500).json({
-                error: error.message,
-                resposta_sefaz: error.response.data ? error.response.data.substring(0, 1000) : null
-            });
-        }
+        console.error('Erro ao gerar envelope SOAP:', error);
         res.status(500).json({ error: error.message });
     }
 });
