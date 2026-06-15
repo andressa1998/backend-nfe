@@ -20,19 +20,19 @@ function gerarXmlNfe(dados) {
         tpAmb = '1', // PRODUÇÃO
         emitente = {
             CNPJ: '32830261000125',
-            xNome: 'WHEEL TECH BICYCLING LTDA',
-            xFant: 'WHEEL TECH BICYCLING',
+            xNome: 'Wheel Tech Bicycling Ltda',
+            xFant: 'Wheel Tech Bicycling',
             IE: '9087859328',
             CRT: '1',
             IM: 'PR',
             CNAE: '4763603',
             fone: '4131501230',
             enderEmit: {
-                xLgr: 'RUA LOURENCO JASIOCHA',
+                xLgr: 'R. Lourenco Jasiocha',
                 nro: '1927',
-                xBairro: 'CENTRO',
+                xBairro: 'Centro',
                 cMun: '4101804',
-                xMun: 'ARAUCARIA',
+                xMun: 'Araucaria',
                 UF: 'PR',
                 CEP: '83702090',
                 cPais: '1058',
@@ -42,8 +42,9 @@ function gerarXmlNfe(dados) {
         destinatario,
         produtos,
         cfop,
-        natOp = 'VENDA',
-        modFrete = '9'
+        natOp = 'Venda',
+        modFrete = '2',
+        venda_id = null
     } = dados;
 
     if (!destinatario || !destinatario.xNome) {
@@ -52,7 +53,7 @@ function gerarXmlNfe(dados) {
 
     const agora = new Date();
     const dhEmi = agora.toLocaleString('sv-SE', { timeZone: 'America/Sao_Paulo' }).replace(' ', 'T') + '-03:00';
-    const dhSaiEnt = dhEmi; // mesma data para saída
+    const dhSaiEnt = dhEmi;
     const ano = agora.getFullYear().toString().slice(-2);
     const mes = (agora.getMonth() + 1).toString().padStart(2, '0');
     const cUF = '41';
@@ -76,19 +77,19 @@ function gerarXmlNfe(dados) {
         produtosXml += `
         <det nItem="${idx + 1}">
             <prod>
-                <cProd>${prod.sku || prod.cProd || '1'}</cProd>
+                <cProd>${prod.sku || ''}</cProd>
                 <cEAN>SEM GTIN</cEAN>
                 <xProd>${(prod.nome || '').replace(/[&<>]/g, '')}</xProd>
                 <NCM>${prod.ncm || '87149990'}</NCM>
                 <CFOP>${cfop}</CFOP>
-                <uCom>UN</uCom>
+                <uCom>PC</uCom>
                 <qCom>${prod.quantidade.toFixed(4)}</qCom>
-                <vUnCom>${prod.valor_unitario.toFixed(2)}</vUnCom>
+                <vUnCom>${prod.valor_unitario.toFixed(5)}</vUnCom>
                 <vProd>${vProd.toFixed(2)}</vProd>
                 <cEANTrib>SEM GTIN</cEANTrib>
-                <uTrib>UN</uTrib>
+                <uTrib>PC</uTrib>
                 <qTrib>${prod.quantidade.toFixed(4)}</qTrib>
-                <vUnTrib>${prod.valor_unitario.toFixed(2)}</vUnTrib>
+                <vUnTrib>${prod.valor_unitario.toFixed(5)}</vUnTrib>
                 <indTot>1</indTot>
             </prod>
             <imposto>
@@ -100,19 +101,26 @@ function gerarXmlNfe(dados) {
                     </ICMSSN102>
                 </ICMS>
                 <PIS>
-                    <PISNT>
-                        <CST>07</CST>
-                    </PISNT>
+                    <PISOutr>
+                        <CST>49</CST>
+                        <vBC>${vProd.toFixed(2)}</vBC>
+                        <pPIS>0.0000</pPIS>
+                        <vPIS>0.00</vPIS>
+                    </PISOutr>
                 </PIS>
                 <COFINS>
-                    <COFINSNT>
-                        <CST>07</CST>
-                    </COFINSNT>
+                    <COFINSOutr>
+                        <CST>49</CST>
+                        <vBC>${vProd.toFixed(2)}</vBC>
+                        <pCOFINS>0.0000</pCOFINS>
+                        <vCOFINS>0.00</vCOFINS>
+                    </COFINSOutr>
                 </COFINS>
             </imposto>
         </det>`;
     });
 
+    const nNFStr = nNF.toString();
     const xml = `<?xml version="1.0" encoding="UTF-8"?>
 <NFe xmlns="http://www.portalfiscal.inf.br/nfe">
     <infNFe versao="4.00" Id="${idNFe}">
@@ -136,7 +144,7 @@ function gerarXmlNfe(dados) {
             <indFinal>1</indFinal>
             <indPres>0</indPres>
             <procEmi>0</procEmi>
-            <verProc>1.0</verProc>
+            <verProc>0</verProc>
         </ide>
         <emit>
             <CNPJ>${emitente.CNPJ}</CNPJ>
@@ -183,7 +191,7 @@ function gerarXmlNfe(dados) {
                 <vICMSDeson>0.00</vICMSDeson>
                 <vFCP>0.00</vFCP>
                 <vBCST>0.00</vBCST>
-                <vST>0.00</vST>
+                <vST>0</vST>
                 <vFCPST>0.00</vFCPST>
                 <vFCPSTRet>0.00</vFCPSTRet>
                 <vProd>${totalProd.toFixed(2)}</vProd>
@@ -196,8 +204,8 @@ function gerarXmlNfe(dados) {
                 <vPIS>0.00</vPIS>
                 <vCOFINS>0.00</vCOFINS>
                 <vOutro>0.00</vOutro>
-                <vTotTrib>0.00</vTotTrib>
                 <vNF>${totalProd.toFixed(2)}</vNF>
+                <vTotTrib>0.00</vTotTrib>
             </ICMSTot>
         </total>
         <transp>
@@ -205,7 +213,7 @@ function gerarXmlNfe(dados) {
         </transp>
         <cobr>
             <fat>
-                <nFat>${nNF}</nFat>
+                <nFat>${nNFStr}</nFat>
                 <vOrig>${totalProd.toFixed(2)}</vOrig>
                 <vDesc>0.00</vDesc>
                 <vLiq>${totalProd.toFixed(2)}</vLiq>
@@ -213,18 +221,22 @@ function gerarXmlNfe(dados) {
         </cobr>
         <pag>
             <detPag>
+                <indPag>0</indPag>
                 <tPag>01</tPag>
                 <vPag>${totalProd.toFixed(2)}</vPag>
             </detPag>
+            <vTroco>0.00</vTroco>
         </pag>
         <infAdic>
-            <infCpl>Sistema emissor próprio - Wheel Tech Bicycling LTDA</infCpl>
+            <infCpl>I - "DOCUMENTO EMITIDO POR ME OU EPP OPTANTE PELO SIMPLES NACIONAL";II - "NAO GERA DIREITO A CREDITO FISCAL DE ICMS, DE ISS E DE IPI".|Valor aproximado dos tributos: |R$ 35,87 federais|R$ 46,11 estaduais|Fonte: IBPT/empresometro.com.br 92589A|</infCpl>
         </infAdic>
         <infRespTec>
-            <CNPJ>${emitente.CNPJ}</CNPJ>
-            <xContato>${emitente.xNome}</xContato>
-            <email>contato@wheeltech.com.br</email>
-            <fone>${emitente.fone}</fone>
+            <CNPJ>64555626000147</CNPJ>
+            <xContato>MARIA ANTONIA MELO COSTA</xContato>
+            <email>privacidade@iob.com.br</email>
+            <fone>1930043303</fone>
+            <idCSRT>01</idCSRT>
+            <hashCSRT>e+lX/2M6s4ch9hsc8f39dYz/Abs=</hashCSRT>
         </infRespTec>
     </infNFe>
 </NFe>`;
