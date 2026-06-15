@@ -15,25 +15,31 @@ class NFEService {
         }
     }
 
+    // Função auxiliar para limpar o XML e evitar caracteres problemáticos
+    _cleanXml(xml) {
+        return xml
+            .replace(/<\?xml.*?\?>/g, '')          // remove declaração XML
+            .replace(/\r?\n/g, '')                 // remove quebras de linha
+            .replace(/\t/g, '')                    // remove tabs
+            .replace(/>\s+</g, '><')               // remove espaços entre tags
+            .trim();
+    }
+
     async sendNFe(xmlAssinado, certData) {
+        // Cria o agente HTTPS com o certificado e a cadeia (se existir)
         const httpsAgent = new https.Agent({
             cert: certData.cert,
             key: certData.privateKey,
-            rejectUnauthorized: false,
+            ca: certData.ca || undefined,          // inclui a cadeia de certificados
+            rejectUnauthorized: false,             // homologação não exige validação estrita
             secureProtocol: 'TLSv1_2_method',
             ciphers: 'DEFAULT@SECLEVEL=1'
         });
 
-        // Remove declaração XML e espaços
-        let xmlLimpo = xmlAssinado
-            .replace(/<\?xml.*?\?>/g, '')
-            .replace(/\r/g, '')
-            .replace(/\n/g, '')
-            .replace(/\t/g, '')
-            .replace(/>\s+</g, '><')
-            .trim();
+        // Limpa o XML para envio
+        let xmlLimpo = this._cleanXml(xmlAssinado);
 
-        // Envelope SOAP 1.1 (mais compatível)
+        // Monta o envelope SOAP de acordo com o padrão da SEFAZ (versão 1.1)
         const soapEnvelope = `<?xml version="1.0" encoding="utf-8"?>
 <soap:Envelope xmlns:soap="http://schemas.xmlsoap.org/soap/envelope/"
                xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
@@ -45,33 +51,36 @@ class NFEService {
     </soap:Body>
 </soap:Envelope>`;
 
-        const response = await axios.post(this.urlAutorizacao, soapEnvelope, {
-            httpsAgent,
-            headers: {
-                'Content-Type': 'text/xml; charset=utf-8',
-                'SOAPAction': 'http://www.portalfiscal.inf.br/nfe/wsdl/NFeAutorizacao4/nfeDadosMsg'
-            },
-            timeout: 60000
-        });
-        return response.data;
+        try {
+            const response = await axios.post(this.urlAutorizacao, soapEnvelope, {
+                httpsAgent,
+                headers: {
+                    'Content-Type': 'text/xml; charset=utf-8',
+                    'SOAPAction': 'http://www.portalfiscal.inf.br/nfe/wsdl/NFeAutorizacao4/nfeDadosMsg'
+                },
+                timeout: 60000
+            });
+            return response.data;
+        } catch (error) {
+            console.error('❌ Erro ao enviar NF-e para SEFAZ:', error.message);
+            if (error.response) {
+                console.error('Resposta da SEFAZ (erro HTTP):', error.response.data);
+            }
+            throw error;
+        }
     }
 
     async sendEvento(xmlAssinado, certData) {
         const httpsAgent = new https.Agent({
             cert: certData.cert,
             key: certData.privateKey,
+            ca: certData.ca || undefined,
             rejectUnauthorized: false,
             secureProtocol: 'TLSv1_2_method',
             ciphers: 'DEFAULT@SECLEVEL=1'
         });
 
-        let xmlLimpo = xmlAssinado
-            .replace(/<\?xml.*?\?>/g, '')
-            .replace(/\r/g, '')
-            .replace(/\n/g, '')
-            .replace(/\t/g, '')
-            .replace(/>\s+</g, '><')
-            .trim();
+        let xmlLimpo = this._cleanXml(xmlAssinado);
 
         const soapEnvelope = `<?xml version="1.0" encoding="utf-8"?>
 <soap:Envelope xmlns:soap="http://schemas.xmlsoap.org/soap/envelope/"
@@ -99,6 +108,7 @@ class NFEService {
         const httpsAgent = new https.Agent({
             cert: certData.cert,
             key: certData.privateKey,
+            ca: certData.ca || undefined,
             rejectUnauthorized: false,
             secureProtocol: 'TLSv1_2_method',
             ciphers: 'DEFAULT@SECLEVEL=1'
