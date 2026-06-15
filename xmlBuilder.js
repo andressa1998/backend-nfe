@@ -125,6 +125,7 @@ function gerarXmlNfe(dados) {
     enderDest.ele('xMun').txt(destinatario.xMun).up();
     enderDest.ele('UF').txt(destinatario.UF).up();
     enderDest.ele('CEP').txt(destinatario.CEP || '00000000').up();
+    // 🔽 CAMPOS DE PAÍS OBRIGATÓRIOS (adicionados)
     enderDest.ele('cPais').txt('1058').up();
     enderDest.ele('xPais').txt('BRASIL').up();
     dest.ele('indIEDest').txt('9').up();
@@ -180,7 +181,7 @@ function gerarXmlNfe(dados) {
     total.ele('vPIS').txt('0.00').up();
     total.ele('vCOFINS').txt('0.00').up();
     total.ele('vOutro').txt('0.00').up();
-    total.ele('vTotTrib').txt('0.00').up();   // ← ELEMENTO OBRIGATÓRIO
+    total.ele('vTotTrib').txt('0.00').up();
     total.ele('vNF').txt(totalProd.toFixed(2)).up();
 
     // ========== TRANSPORTE ==========
