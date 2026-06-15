@@ -169,6 +169,12 @@ async function emitirNFe(req, res) {
         const xmlPath = '/tmp/nfe_enviada.xml';
         fs.writeFileSync(xmlPath, xmlAssinado);
         console.log(`📄 XML COMPLETO salvo em ${xmlPath}`);
+        
+        // 🔹 LOG DO CONTEÚDO DO XML (primeiros 2000 caracteres)
+        const xmlContent = fs.readFileSync(xmlPath, 'utf8');
+        console.log('========== XML ENVIADO (primeiros 2000 caracteres) ==========');
+        console.log(xmlContent.substring(0, 2000));
+        console.log('============================================================');
 
         // ========== ENVIAR PARA SEFAZ ==========
         const nfeService = new NFEService('homologacao'); // altere para 'producao' quando for produção
@@ -178,6 +184,12 @@ async function emitirNFe(req, res) {
         const respPath = '/tmp/resposta_sefaz.xml';
         fs.writeFileSync(respPath, respostaSefaz);
         console.log(`📨 RESPOSTA COMPLETA SEFAZ salva em ${respPath}`);
+        
+        // 🔹 LOG DO CONTEÚDO DA RESPOSTA (primeiros 2000 caracteres)
+        const respContent = fs.readFileSync(respPath, 'utf8');
+        console.log('========== RESPOSTA SEFAZ (primeiros 2000 caracteres) ==========');
+        console.log(respContent.substring(0, 2000));
+        console.log('===============================================================');
 
         const protocolo = extrairProtocolo(respostaSefaz);
         const chaveAcesso = extrairChaveAcesso(xmlAssinado);
