@@ -1,11 +1,6 @@
 const express = require('express');
-const router = express.Router();
-
-// Controlador para a emissão (usando node-nfe)
-const { emitirNFe } = require('./nfeControllerNodeNfe');
-
-// Demais funções do controlador original (exceto emitirNFe)
 const {
+    emitirNFe,
     cancelarNFe,
     listarNFesEmitidas,
     listarTransportadoras,
@@ -20,8 +15,10 @@ const {
     testarEnvioXMLFixo
 } = require('./nfeController');
 
+const router = express.Router();
+
 // Rotas principais
-router.post('/emitir', emitirNFe);                     // EMISSÃO com node-nfe
+router.post('/emitir', emitirNFe);
 router.post('/cancelar', cancelarNFe);
 router.get('/listar-nfes', listarNFesEmitidas);
 router.get('/transportadoras', listarTransportadoras);
