@@ -1,16 +1,14 @@
-// nfeControllerNodeNfe.js
 const { gerarXmlNfe } = require('./xmlBuilder');
 const { assinarXml } = require('./xmlSigner');
 const { loadCertificates } = require('./utils');
 const NFEService = require('./nfeService');
 const supabase = require('./supabaseClient');
+const fs = require('fs');
 
 const DEFAULT_IBGE = '4101804';
 
-// ===================== OBTER CÓDIGO IBGE =====================
 async function obterCodigoMunicipio(nomeCidade, uf, cep = null) {
     try {
-        // 1. Busca no Supabase (case-insensitive)
         const { data, error } = await supabase
             .from('municipios')
             .select('codigo_ibge')
@@ -20,8 +18,6 @@ async function obterCodigoMunicipio(nomeCidade, uf, cep = null) {
         if (data && !error && data.codigo_ibge) {
             return String(data.codigo_ibge);
         }
-
-        // 2. Fallback via BrasilAPI (se tiver CEP)
         if (cep) {
             const fetch = require('node-fetch');
             const cepLimpo = cep.replace(/\D/g, '');
@@ -30,7 +26,6 @@ async function obterCodigoMunicipio(nomeCidade, uf, cep = null) {
                 const json = await response.json();
                 if (json.ibge_code) {
                     const ibge = String(json.ibge_code);
-                    // Salva para futuras consultas
                     await supabase.from('municipios').upsert({
                         codigo_ibge: parseInt(ibge),
                         nome: json.city,
@@ -40,8 +35,6 @@ async function obterCodigoMunicipio(nomeCidade, uf, cep = null) {
                 }
             }
         }
-
-        // 3. Fallback final
         console.warn(`⚠️ IBGE não encontrado para ${nomeCidade}/${uf}, usando padrão ${DEFAULT_IBGE}`);
         return DEFAULT_IBGE;
     } catch (error) {
@@ -72,7 +65,6 @@ async function emitirNFe(req, res) {
     console.log('📨 [node-nfe] Requisição de emissão recebida');
     try {
         const { cliente, produtos, cfop, natureza_operacao, modalidade_frete, venda_id } = req.body;
-
         if (!cliente || !produtos || produtos.length === 0) {
             return res.status(400).json({ error: 'Dados incompletos: cliente e produtos são obrigatórios' });
         }
@@ -80,7 +72,6 @@ async function emitirNFe(req, res) {
         const nNF = await getNextNFNumber();
         console.log(`✅ Número NF alocado: ${nNF}`);
 
-        // Prepara dados do destinatário
         let documento = (cliente.documento || '').replace(/\D/g, '');
         if (!documento || (documento.length !== 11 && documento.length !== 14)) {
             console.warn('⚠️ Documento inválido, usando CPF genérico para homologação');
@@ -91,8 +82,6 @@ async function emitirNFe(req, res) {
         const cidade = cliente.cidade || 'ARAUCARIA';
         const uf = cliente.uf || 'PR';
         const cep = (cliente.cep || '83702090').replace(/\D/g, '');
-        
-        // 🔥 Obtém o código IBGE correto
         const codigoIbge = await obterCodigoMunicipio(cidade, uf, cep);
         console.log(`📍 Cidade: ${cidade}/${uf}, IBGE: ${codigoIbge}`);
 
@@ -116,32 +105,22 @@ async function emitirNFe(req, res) {
         const cfopFinal = cfop || (isMesmaUF ? '5102' : '6108');
         const valorTotal = produtos.reduce((sum, p) => sum + (p.quantidade * p.valor_unitario), 0);
 
-        // Gera XML
         const xml = gerarXmlNfe({
-            nNF,
-            serie: 1,
-            destinatario,
-            produtos,
-            cfop: cfopFinal,
-            natOp: natureza_operacao || 'VENDA',
-            modFrete: modalidade_frete || '9',
-            valor_total: valorTotal
+            nNF, serie: 1, destinatario, produtos, cfop: cfopFinal,
+            natOp: natureza_operacao || 'VENDA', modFrete: modalidade_frete || '9', valor_total: valorTotal
         });
 
-        // Assina XML
         const certData = loadCertificates();
         const xmlAssinado = assinarXml(xml, { privateKey: certData.privateKey, cert: certData.cert });
 
-        // LOG do XML (para debug)
-        console.log('========== XML COMPLETO (copie para testar no Insomnia) ==========');
-        console.log(xmlAssinado);
-        console.log('==================================================================');
+        // Salva o XML para teste
+        const xmlPath = '/tmp/nfe_enviada.xml';
+        fs.writeFileSync(xmlPath, xmlAssinado);
+        console.log(`📄 XML salvo em ${xmlPath}`);
 
-        // Envia para SEFAZ
         const nfeService = new NFEService('homologacao');
         const respostaSefaz = await nfeService.sendNFe(xmlAssinado, certData);
 
-        // Extrai resultado
         const protocoloMatch = respostaSefaz.match(/<nProt[^>]*>(\d+)<\/nProt>/i);
         const cStatMatch = respostaSefaz.match(/<cStat[^>]*>(\d+)<\/cStat>/i);
         const xMotivoMatch = respostaSefaz.match(/<xMotivo[^>]*>([^<]+)<\/xMotivo>/i);
@@ -156,32 +135,20 @@ async function emitirNFe(req, res) {
 
         console.log(`✅ NF-e autorizada! Protocolo: ${protocolo}, Chave: ${chaveAcesso}`);
 
-        // Salva no Supabase
         await supabase.from('nfe_emitidas').insert({
-            venda_id: venda_id || null,
-            chave: chaveAcesso,
-            protocolo: protocolo,
-            xml: xmlAssinado,
-            status: 'autorizada',
-            cancelada: false,
-            data_emissao: new Date().toISOString(),
-            valor_total: valorTotal
+            venda_id: venda_id || null, chave: chaveAcesso, protocolo: protocolo,
+            xml: xmlAssinado, status: 'autorizada', cancelada: false,
+            data_emissao: new Date().toISOString(), valor_total: valorTotal
         });
 
         if (venda_id) {
-            await supabase
-                .from('vendas_ml')
-                .update({
-                    nfe_emitida: true,
-                    nfe_chave: chaveAcesso,
-                    nfe_protocolo: protocolo,
-                    data_emissao: new Date().toISOString()
-                })
-                .eq('id', venda_id);
+            await supabase.from('vendas_ml').update({
+                nfe_emitida: true, nfe_chave: chaveAcesso, nfe_protocolo: protocolo,
+                data_emissao: new Date().toISOString()
+            }).eq('id', venda_id);
         }
 
         res.json({ success: true, protocolo, chaveAcesso });
-
     } catch (error) {
         console.error('❌ Erro na emissão:', error);
         res.status(500).json({ success: false, error: error.message });
