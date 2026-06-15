@@ -5,6 +5,51 @@ const { loadCertificates } = require('./utils');
 const NFEService = require('./nfeService');
 const supabase = require('./supabaseClient');
 
+const DEFAULT_IBGE = '4101804';
+
+// ===================== OBTER CÓDIGO IBGE =====================
+async function obterCodigoMunicipio(nomeCidade, uf, cep = null) {
+    try {
+        // 1. Busca no Supabase (case-insensitive)
+        const { data, error } = await supabase
+            .from('municipios')
+            .select('codigo_ibge')
+            .ilike('nome', nomeCidade.trim())
+            .eq('uf', uf)
+            .maybeSingle();
+        if (data && !error && data.codigo_ibge) {
+            return String(data.codigo_ibge);
+        }
+
+        // 2. Fallback via BrasilAPI (se tiver CEP)
+        if (cep) {
+            const fetch = require('node-fetch');
+            const cepLimpo = cep.replace(/\D/g, '');
+            const response = await fetch(`https://brasilapi.com.br/api/cep/v1/${cepLimpo}`);
+            if (response.ok) {
+                const json = await response.json();
+                if (json.ibge_code) {
+                    const ibge = String(json.ibge_code);
+                    // Salva para futuras consultas
+                    await supabase.from('municipios').upsert({
+                        codigo_ibge: parseInt(ibge),
+                        nome: json.city,
+                        uf: json.state
+                    }, { onConflict: 'codigo_ibge' });
+                    return ibge;
+                }
+            }
+        }
+
+        // 3. Fallback final
+        console.warn(`⚠️ IBGE não encontrado para ${nomeCidade}/${uf}, usando padrão ${DEFAULT_IBGE}`);
+        return DEFAULT_IBGE;
+    } catch (error) {
+        console.error('❌ Erro ao obter IBGE:', error);
+        return DEFAULT_IBGE;
+    }
+}
+
 async function getNextNFNumber(serie = 1) {
     try {
         const { data, error } = await supabase
@@ -43,15 +88,23 @@ async function emitirNFe(req, res) {
         }
         const tipoDoc = documento.length === 14 ? 'CNPJ' : 'CPF';
 
+        const cidade = cliente.cidade || 'ARAUCARIA';
+        const uf = cliente.uf || 'PR';
+        const cep = (cliente.cep || '83702090').replace(/\D/g, '');
+        
+        // 🔥 Obtém o código IBGE correto
+        const codigoIbge = await obterCodigoMunicipio(cidade, uf, cep);
+        console.log(`📍 Cidade: ${cidade}/${uf}, IBGE: ${codigoIbge}`);
+
         const destinatario = {
             xNome: cliente.nome || 'Consumidor Final',
             xLgr: cliente.endereco || cliente.logradouro || 'NÃO INFORMADO',
             nro: cliente.numero || 'S/N',
             xBairro: cliente.bairro || 'CENTRO',
-            xMun: cliente.cidade || 'ARAUCARIA',
-            UF: cliente.uf || 'PR',
-            CEP: (cliente.cep || '83702090').replace(/\D/g, ''),
-            cMun: cliente.codigo_ibge || 4101804
+            xMun: cidade,
+            UF: uf,
+            CEP: cep,
+            cMun: codigoIbge
         };
         if (tipoDoc === 'CPF') {
             destinatario.CPF = documento;
@@ -79,12 +132,12 @@ async function emitirNFe(req, res) {
         const certData = loadCertificates();
         const xmlAssinado = assinarXml(xml, { privateKey: certData.privateKey, cert: certData.cert });
 
-        // 🔥 LOG DO XML COMPLETO NOS LOGS DO RENDER (gratuito)
+        // LOG do XML (para debug)
         console.log('========== XML COMPLETO (copie para testar no Insomnia) ==========');
         console.log(xmlAssinado);
         console.log('==================================================================');
 
-        // Envia para SEFAZ usando NFEService (já ajustado)
+        // Envia para SEFAZ
         const nfeService = new NFEService('homologacao');
         const respostaSefaz = await nfeService.sendNFe(xmlAssinado, certData);
 
