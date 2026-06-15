@@ -27,7 +27,7 @@ const { loadCertificates } = require('./utils');
 
 const router = express.Router();
 
-// Rotas principais
+// ===================== ROTAS PRINCIPAIS =====================
 router.post('/emitir', emitirNFe);
 router.post('/cancelar', cancelarNFe);
 router.get('/listar-nfes', listarNFesEmitidas);
@@ -42,17 +42,28 @@ router.get('/vendas-com-nfe', listarVendasComNFE);
 router.get('/buscar-xml', buscarXMLPorChave);
 router.post('/testar-xml-fixo', testarEnvioXMLFixo);
 
-// 🔥 ROTA DE TESTE: envia o último XML gerado (puro) diretamente para a SEFAZ
+// ===================== ROTA DE TESTE: XML PURO =====================
 router.post('/testar-xml-raw', async (req, res) => {
+    console.log('📨 Rota /testar-xml-raw chamada');
     try {
         const xmlPath = '/tmp/nfe_enviada.xml';
+        console.log('Procurando XML em:', xmlPath);
         if (!fs.existsSync(xmlPath)) {
+            console.log('XML não encontrado');
             return res.status(404).json({ error: 'Nenhum XML gerado ainda. Emita uma NF-e primeiro.' });
         }
         const xml = fs.readFileSync(xmlPath, 'utf8');
+        console.log('XML lido, tamanho:', xml.length);
 
-        // Carrega o certificado usando a mesma função que já funciona (do nfeController)
-        const certData = loadCertificates();
+        // Carrega o certificado usando a mesma função que já funciona
+        let certData;
+        try {
+            certData = loadCertificates();
+            console.log('Certificado carregado? cert:', !!certData.cert, 'key:', !!certData.privateKey);
+        } catch (err) {
+            console.error('Erro ao carregar certificado:', err);
+            return res.status(500).json({ error: 'Erro ao carregar certificado: ' + err.message });
+        }
 
         const httpsAgent = new https.Agent({
             cert: certData.cert,
@@ -63,7 +74,7 @@ router.post('/testar-xml-raw', async (req, res) => {
             ciphers: 'DEFAULT@SECLEVEL=1'
         });
 
-        // Envia o XML puro (sem envelope SOAP)
+        console.log('Enviando XML para SEFAZ...');
         const response = await axios.post(
             'https://homologacao.nfe.sefa.pr.gov.br/nfe/NFeAutorizacao4',
             xml,
@@ -76,6 +87,7 @@ router.post('/testar-xml-raw', async (req, res) => {
                 timeout: 60000
             }
         );
+        console.log('Resposta da SEFAZ recebida, status:', response.status);
 
         const cStatMatch = response.data.match(/<cStat>(\d+)<\/cStat>/);
         const xMotivoMatch = response.data.match(/<xMotivo>([^<]+)<\/xMotivo>/);
@@ -89,11 +101,18 @@ router.post('/testar-xml-raw', async (req, res) => {
         });
     } catch (error) {
         console.error('Erro na rota /testar-xml-raw:', error);
+        if (error.response) {
+            console.error('Resposta de erro da SEFAZ (primeiros 1000 chars):', error.response.data?.substring(0, 1000));
+            return res.status(500).json({
+                error: error.message,
+                resposta_sefaz: error.response.data ? error.response.data.substring(0, 1000) : null
+            });
+        }
         res.status(500).json({ error: error.message });
     }
 });
 
-// 🔥 ROTA PARA BAIXAR O ÚLTIMO XML GERADO (via navegador)
+// ===================== ROTA PARA BAIXAR O ÚLTIMO XML =====================
 router.get('/ultimo-xml', (req, res) => {
     const xmlPath = '/tmp/nfe_enviada.xml';
     if (fs.existsSync(xmlPath)) {
