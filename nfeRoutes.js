@@ -22,6 +22,9 @@ const {
     testarEnvioXMLFixo
 } = require('./nfeController');
 
+// Função auxiliar para carregar certificado (mesmo do nfeController)
+const { loadCertificates } = require('./utils');
+
 const router = express.Router();
 
 // Rotas principais
@@ -39,7 +42,7 @@ router.get('/vendas-com-nfe', listarVendasComNFE);
 router.get('/buscar-xml', buscarXMLPorChave);
 router.post('/testar-xml-fixo', testarEnvioXMLFixo);
 
-// 🔥 ROTA DE TESTE: envia o último XML gerado (puro, sem envelope SOAP) diretamente para a SEFAZ
+// 🔥 ROTA DE TESTE: envia o último XML gerado (puro) diretamente para a SEFAZ
 router.post('/testar-xml-raw', async (req, res) => {
     try {
         const xmlPath = '/tmp/nfe_enviada.xml';
@@ -48,21 +51,19 @@ router.post('/testar-xml-raw', async (req, res) => {
         }
         const xml = fs.readFileSync(xmlPath, 'utf8');
 
-        // Carrega o certificado PFX diretamente das variáveis de ambiente
-        const pfxBase64 = process.env.PFX_BASE64;
-        const pfxPassword = process.env.PFX_PASSWORD;
-        if (!pfxBase64 || !pfxPassword) {
-            return res.status(500).json({ error: 'Certificado não configurado (PFX_BASE64 e PFX_PASSWORD)' });
-        }
-        const pfxBuffer = Buffer.from(pfxBase64, 'base64');
+        // Carrega o certificado usando a mesma função que já funciona (do nfeController)
+        const certData = loadCertificates();
 
         const httpsAgent = new https.Agent({
-            pfx: pfxBuffer,
-            passphrase: pfxPassword,
-            rejectUnauthorized: false
+            cert: certData.cert,
+            key: certData.privateKey,
+            ca: certData.ca || undefined,
+            rejectUnauthorized: false,
+            secureProtocol: 'TLSv1_2_method',
+            ciphers: 'DEFAULT@SECLEVEL=1'
         });
 
-        // Envia o XML puro (exatamente como o Insomnia faria)
+        // Envia o XML puro (sem envelope SOAP)
         const response = await axios.post(
             'https://homologacao.nfe.sefa.pr.gov.br/nfe/NFeAutorizacao4',
             xml,
@@ -76,7 +77,6 @@ router.post('/testar-xml-raw', async (req, res) => {
             }
         );
 
-        // Extrai informações da resposta
         const cStatMatch = response.data.match(/<cStat>(\d+)<\/cStat>/);
         const xMotivoMatch = response.data.match(/<xMotivo>([^<]+)<\/xMotivo>/);
         const protocoloMatch = response.data.match(/<nProt>(\d+)<\/nProt>/);
@@ -85,7 +85,7 @@ router.post('/testar-xml-raw', async (req, res) => {
             cStat: cStatMatch ? cStatMatch[1] : null,
             xMotivo: xMotivoMatch ? xMotivoMatch[1] : null,
             protocolo: protocoloMatch ? protocoloMatch[1] : null,
-            resposta_completa: response.data.substring(0, 2000) // limite para não estourar
+            resposta_completa: response.data.substring(0, 2000)
         });
     } catch (error) {
         console.error('Erro na rota /testar-xml-raw:', error);
