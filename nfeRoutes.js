@@ -2,11 +2,7 @@ const express = require('express');
 const fs = require('fs');
 const https = require('https');
 const axios = require('axios');
-
-// Controlador para a emissão (usando node-nfe)
 const { emitirNFe } = require('./nfeControllerNodeNfe');
-
-// Demais funções do controlador original (exceto emitirNFe)
 const {
     cancelarNFe,
     listarNFesEmitidas,
@@ -21,15 +17,13 @@ const {
     buscarXMLPorChave,
     testarEnvioXMLFixo
 } = require('./nfeController');
-
-// Funções auxiliares
 const { loadCertificates } = require('./utils');
 const { gerarXmlNfe } = require('./xmlBuilder');
 const { assinarXml } = require('./xmlSigner');
 
 const router = express.Router();
 
-// ===================== ROTAS PRINCIPAIS =====================
+// Rotas principais
 router.post('/emitir', emitirNFe);
 router.post('/cancelar', cancelarNFe);
 router.get('/listar-nfes', listarNFesEmitidas);
@@ -44,12 +38,13 @@ router.get('/vendas-com-nfe', listarVendasComNFE);
 router.get('/buscar-xml', buscarXMLPorChave);
 router.post('/testar-xml-fixo', testarEnvioXMLFixo);
 
-// ===================== ROTA DE TESTE: ENVELOPE SOAP (exibido no navegador) =====================
-router.get('/testar-soap-envelope', async (req, res) => {
+// 🔥 ROTA DE TESTE: ENVIA ENVELOPE SOAP DIRETAMENTE PARA A SEFAZ (usando certificado do backend)
+router.post('/testar-soap-backend', async (req, res) => {
     try {
-        // Dados fixos para teste (os mesmos do XML que já funcionou)
+        console.log('📨 [testar-soap-backend] Iniciando...');
         const certData = loadCertificates();
 
+        // Gera XML com dados fixos (os mesmos que já funcionaram)
         const xml = gerarXmlNfe({
             nNF: 50038,
             serie: 1,
@@ -76,8 +71,6 @@ router.get('/testar-soap-envelope', async (req, res) => {
         });
 
         const xmlAssinado = assinarXml(xml, certData);
-
-        // Limpa o XML (remove declaração, quebras de linha, espaços entre tags)
         const xmlLimpo = xmlAssinado
             .replace(/<\?xml.*?\?>/g, '')
             .replace(/\r?\n/g, '')
@@ -85,22 +78,47 @@ router.get('/testar-soap-envelope', async (req, res) => {
             .replace(/>\s+</g, '><')
             .trim();
 
-        // Monta o envelope SOAP exatamente como será enviado
         const soapEnvelope = `<?xml version="1.0" encoding="utf-8"?><soap:Envelope xmlns:soap="http://schemas.xmlsoap.org/soap/envelope/" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xmlns:xsd="http://www.w3.org/2001/XMLSchema"><soap:Body><nfeDadosMsg xmlns="http://www.portalfiscal.inf.br/nfe/wsdl/NFeAutorizacao4">${xmlLimpo}</nfeDadosMsg></soap:Body></soap:Envelope>`;
 
-        // Salva em arquivo (opcional, para debug)
-        fs.writeFileSync('/tmp/soap_envelope.xml', soapEnvelope, 'utf8');
+        const httpsAgent = new https.Agent({
+            cert: certData.cert,
+            key: certData.privateKey,
+            ca: certData.ca || undefined,
+            rejectUnauthorized: false,
+            secureProtocol: 'TLSv1_2_method',
+            ciphers: 'DEFAULT@SECLEVEL=1'
+        });
 
-        // Exibe o XML no navegador (content-type texto puro, para fácil cópia)
-        res.setHeader('Content-Type', 'text/plain; charset=utf-8');
-        res.send(soapEnvelope);
+        const response = await axios.post(
+            'https://homologacao.nfe.sefa.pr.gov.br/nfe/NFeAutorizacao4',
+            soapEnvelope,
+            {
+                httpsAgent,
+                headers: {
+                    'Content-Type': 'text/xml; charset=utf-8',
+                    'SOAPAction': 'http://www.portalfiscal.inf.br/nfe/wsdl/NFeAutorizacao4/nfeDadosMsg'
+                },
+                timeout: 60000
+            }
+        );
+
+        const cStatMatch = response.data.match(/<cStat>(\d+)<\/cStat>/);
+        const xMotivoMatch = response.data.match(/<xMotivo>([^<]+)<\/xMotivo>/);
+        const protocoloMatch = response.data.match(/<nProt>(\d+)<\/nProt>/);
+
+        res.json({
+            cStat: cStatMatch ? cStatMatch[1] : null,
+            xMotivo: xMotivoMatch ? xMotivoMatch[1] : null,
+            protocolo: protocoloMatch ? protocoloMatch[1] : null,
+            resposta_completa: response.data.substring(0, 2000)
+        });
     } catch (error) {
-        console.error('Erro ao gerar envelope SOAP:', error);
+        console.error('Erro em /testar-soap-backend:', error);
         res.status(500).json({ error: error.message });
     }
 });
 
-// ===================== ROTA PARA BAIXAR O ÚLTIMO XML GERADO =====================
+// Rota para baixar o último XML gerado
 router.get('/ultimo-xml', (req, res) => {
     const xmlPath = '/tmp/nfe_enviada.xml';
     if (fs.existsSync(xmlPath)) {
@@ -108,7 +126,7 @@ router.get('/ultimo-xml', (req, res) => {
         res.setHeader('Content-Type', 'application/xml');
         res.send(xml);
     } else {
-        res.status(404).send('Nenhum XML gerado ainda. Tente emitir uma NF-e primeiro.');
+        res.status(404).send('Nenhum XML gerado ainda.');
     }
 });
 
