@@ -17,13 +17,16 @@ function gerarXmlNfe(dados) {
         nNF,
         serie = 1,
         cNF = String(Math.floor(Math.random() * 100000000)).padStart(8, '0'),
-        tpAmb = '2',
+        tpAmb = '1', // PRODUÇÃO
         emitente = {
             CNPJ: '32830261000125',
             xNome: 'WHEEL TECH BICYCLING LTDA',
             xFant: 'WHEEL TECH BICYCLING',
             IE: '9087859328',
             CRT: '1',
+            IM: 'PR',
+            CNAE: '4763603',
+            fone: '4131501230',
             enderEmit: {
                 xLgr: 'RUA LOURENCO JASIOCHA',
                 nro: '1927',
@@ -49,6 +52,7 @@ function gerarXmlNfe(dados) {
 
     const agora = new Date();
     const dhEmi = agora.toLocaleString('sv-SE', { timeZone: 'America/Sao_Paulo' }).replace(' ', 'T') + '-03:00';
+    const dhSaiEnt = dhEmi; // mesma data para saída
     const ano = agora.getFullYear().toString().slice(-2);
     const mes = (agora.getMonth() + 1).toString().padStart(2, '0');
     const cUF = '41';
@@ -88,6 +92,7 @@ function gerarXmlNfe(dados) {
                 <indTot>1</indTot>
             </prod>
             <imposto>
+                <vTotTrib>0.00</vTotTrib>
                 <ICMS>
                     <ICMSSN102>
                         <orig>0</orig>
@@ -119,6 +124,7 @@ function gerarXmlNfe(dados) {
             <serie>${serie}</serie>
             <nNF>${nNF}</nNF>
             <dhEmi>${dhEmi}</dhEmi>
+            <dhSaiEnt>${dhSaiEnt}</dhSaiEnt>
             <tpNF>1</tpNF>
             <idDest>${destinatario.UF === emitente.enderEmit.UF ? '1' : '2'}</idDest>
             <cMunFG>${emitente.enderEmit.cMun}</cMunFG>
@@ -128,7 +134,7 @@ function gerarXmlNfe(dados) {
             <tpAmb>${tpAmb}</tpAmb>
             <finNFe>1</finNFe>
             <indFinal>1</indFinal>
-            <indPres>1</indPres>
+            <indPres>0</indPres>
             <procEmi>0</procEmi>
             <verProc>1.0</verProc>
         </ide>
@@ -146,8 +152,11 @@ function gerarXmlNfe(dados) {
                 <CEP>${emitente.enderEmit.CEP}</CEP>
                 <cPais>${emitente.enderEmit.cPais}</cPais>
                 <xPais>${emitente.enderEmit.xPais}</xPais>
+                <fone>${emitente.fone}</fone>
             </enderEmit>
             <IE>${emitente.IE}</IE>
+            <IM>${emitente.IM}</IM>
+            <CNAE>${emitente.CNAE}</CNAE>
             <CRT>${emitente.CRT}</CRT>
         </emit>
         <dest>
@@ -194,6 +203,14 @@ function gerarXmlNfe(dados) {
         <transp>
             <modFrete>${modFrete}</modFrete>
         </transp>
+        <cobr>
+            <fat>
+                <nFat>${nNF}</nFat>
+                <vOrig>${totalProd.toFixed(2)}</vOrig>
+                <vDesc>0.00</vDesc>
+                <vLiq>${totalProd.toFixed(2)}</vLiq>
+            </fat>
+        </cobr>
         <pag>
             <detPag>
                 <tPag>01</tPag>
@@ -207,7 +224,7 @@ function gerarXmlNfe(dados) {
             <CNPJ>${emitente.CNPJ}</CNPJ>
             <xContato>${emitente.xNome}</xContato>
             <email>contato@wheeltech.com.br</email>
-            <fone>41999999999</fone>
+            <fone>${emitente.fone}</fone>
         </infRespTec>
     </infNFe>
 </NFe>`;
