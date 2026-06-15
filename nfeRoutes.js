@@ -2,6 +2,8 @@ const express = require('express');
 const fs = require('fs');
 const https = require('https');
 const axios = require('axios');
+
+// Controladores
 const { emitirNFe } = require('./nfeControllerNodeNfe');
 const {
     cancelarNFe,
@@ -17,13 +19,15 @@ const {
     buscarXMLPorChave,
     testarEnvioXMLFixo
 } = require('./nfeController');
+
+// Utilitários
 const { loadCertificates } = require('./utils');
 const { gerarXmlNfe } = require('./xmlBuilder');
 const { assinarXml } = require('./xmlSigner');
 
 const router = express.Router();
 
-// Rotas principais
+// ===================== ROTAS PRINCIPAIS =====================
 router.post('/emitir', emitirNFe);
 router.post('/cancelar', cancelarNFe);
 router.get('/listar-nfes', listarNFesEmitidas);
@@ -38,13 +42,13 @@ router.get('/vendas-com-nfe', listarVendasComNFE);
 router.get('/buscar-xml', buscarXMLPorChave);
 router.post('/testar-xml-fixo', testarEnvioXMLFixo);
 
-// 🔥 ROTA DE TESTE: ENVIA ENVELOPE SOAP DIRETAMENTE PARA A SEFAZ (usando certificado do backend)
+// ===================== ROTA DE TESTE COM HTTPS NATIVO =====================
 router.post('/testar-soap-backend', async (req, res) => {
     try {
         console.log('📨 [testar-soap-backend] Iniciando...');
         const certData = loadCertificates();
 
-        // Gera XML com dados fixos (os mesmos que já funcionaram)
+        // Dados fixos para teste (os mesmos que funcionaram no XML fixo)
         const xml = gerarXmlNfe({
             nNF: 50038,
             serie: 1,
@@ -80,37 +84,43 @@ router.post('/testar-soap-backend', async (req, res) => {
 
         const soapEnvelope = `<?xml version="1.0" encoding="utf-8"?><soap:Envelope xmlns:soap="http://schemas.xmlsoap.org/soap/envelope/" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xmlns:xsd="http://www.w3.org/2001/XMLSchema"><soap:Body><nfeDadosMsg xmlns="http://www.portalfiscal.inf.br/nfe/wsdl/NFeAutorizacao4">${xmlLimpo}</nfeDadosMsg></soap:Body></soap:Envelope>`;
 
-        const httpsAgent = new https.Agent({
+        const urlObj = new URL('https://homologacao.nfe.sefa.pr.gov.br/nfe/NFeAutorizacao4');
+        const options = {
+            hostname: urlObj.hostname,
+            path: urlObj.pathname,
+            method: 'POST',
+            headers: {
+                'Content-Type': 'text/xml; charset=utf-8',
+                'SOAPAction': 'http://www.portalfiscal.inf.br/nfe/wsdl/NFeAutorizacao4/nfeDadosMsg',
+                'Content-Length': Buffer.byteLength(soapEnvelope)
+            },
             cert: certData.cert,
             key: certData.privateKey,
             ca: certData.ca || undefined,
             rejectUnauthorized: false,
-            secureProtocol: 'TLSv1_2_method',
-            ciphers: 'DEFAULT@SECLEVEL=1'
+            secureProtocol: 'TLSv1_2_method'
+        };
+
+        const responseData = await new Promise((resolve, reject) => {
+            const request = https.request(options, (response) => {
+                let data = '';
+                response.on('data', chunk => data += chunk);
+                response.on('end', () => resolve(data));
+            });
+            request.on('error', reject);
+            request.write(soapEnvelope);
+            request.end();
         });
 
-        const response = await axios.post(
-            'https://homologacao.nfe.sefa.pr.gov.br/nfe/NFeAutorizacao4',
-            soapEnvelope,
-            {
-                httpsAgent,
-                headers: {
-                    'Content-Type': 'text/xml; charset=utf-8',
-                    'SOAPAction': 'http://www.portalfiscal.inf.br/nfe/wsdl/NFeAutorizacao4/nfeDadosMsg'
-                },
-                timeout: 60000
-            }
-        );
-
-        const cStatMatch = response.data.match(/<cStat>(\d+)<\/cStat>/);
-        const xMotivoMatch = response.data.match(/<xMotivo>([^<]+)<\/xMotivo>/);
-        const protocoloMatch = response.data.match(/<nProt>(\d+)<\/nProt>/);
+        const cStatMatch = responseData.match(/<cStat>(\d+)<\/cStat>/);
+        const xMotivoMatch = responseData.match(/<xMotivo>([^<]+)<\/xMotivo>/);
+        const protocoloMatch = responseData.match(/<nProt>(\d+)<\/nProt>/);
 
         res.json({
             cStat: cStatMatch ? cStatMatch[1] : null,
             xMotivo: xMotivoMatch ? xMotivoMatch[1] : null,
             protocolo: protocoloMatch ? protocoloMatch[1] : null,
-            resposta_completa: response.data.substring(0, 2000)
+            resposta_completa: responseData.substring(0, 2000)
         });
     } catch (error) {
         console.error('Erro em /testar-soap-backend:', error);
@@ -118,7 +128,7 @@ router.post('/testar-soap-backend', async (req, res) => {
     }
 });
 
-// Rota para baixar o último XML gerado
+// ===================== ROTA PARA BAIXAR O ÚLTIMO XML GERADO =====================
 router.get('/ultimo-xml', (req, res) => {
     const xmlPath = '/tmp/nfe_enviada.xml';
     if (fs.existsSync(xmlPath)) {
@@ -126,7 +136,7 @@ router.get('/ultimo-xml', (req, res) => {
         res.setHeader('Content-Type', 'application/xml');
         res.send(xml);
     } else {
-        res.status(404).send('Nenhum XML gerado ainda.');
+        res.status(404).send('Nenhum XML gerado ainda. Tente emitir uma NF-e primeiro.');
     }
 });
 
