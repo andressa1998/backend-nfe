@@ -1,6 +1,6 @@
 const express = require('express');
+const { emitirNFe } = require('./nfeControllerNodeNfe');
 const {
-    emitirNFe,
     cancelarNFe,
     listarNFesEmitidas,
     listarTransportadoras,
