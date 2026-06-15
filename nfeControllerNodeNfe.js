@@ -1,5 +1,9 @@
-const { NFe, AMBIENTE_PRODUCAO } = require('node-nfe');
+const { gerarXmlNfe } = require('./xmlBuilder');
+const { assinarXml } = require('./xmlSigner');
+const { loadCertificates } = require('./utils');
 const supabase = require('./supabaseClient');
+const https = require('https');
+const fs = require('fs');
 
 async function getNextNFNumber(serie = 1) {
     try {
@@ -29,162 +33,105 @@ async function emitirNFe(req, res) {
         const nNF = await getNextNFNumber();
         console.log(`✅ Número NF alocado: ${nNF}`);
 
-        const pfxBuffer = Buffer.from(process.env.PFX_BASE64, 'base64');
-        const pfxPassword = process.env.PFX_PASSWORD;
+        // Dados do destinatário (com código IBGE)
+        const cidade = cliente.cidade || 'Aracaju';
+        const uf = cliente.uf || 'SE';
+        const codigoIbge = cliente.codigo_ibge || (uf === 'SE' ? '2800308' : '4101804');
 
-        const nfe = new NFe({
-            ambiente: AMBIENTE_PRODUCAO,
-            certificado: {
-                pfx: pfxBuffer,
-                senha: pfxPassword
-            }
-        });
+        const destinatario = {
+            CPF: cliente.documento.replace(/\D/g, ''),
+            xNome: cliente.nome,
+            xLgr: cliente.endereco,
+            nro: cliente.numero || 'S/N',
+            xBairro: cliente.bairro || 'Centro',
+            xMun: cidade,
+            UF: uf,
+            CEP: cliente.cep.replace(/\D/g, ''),
+            cMun: codigoIbge
+        };
 
-        const isMesmaUF = (cliente.uf === 'PR');
+        const isMesmaUF = (uf === 'PR');
         const cfopFinal = cfop || (isMesmaUF ? '5102' : '6108');
         const valorTotal = produtos.reduce((sum, p) => sum + (p.quantidade * p.valor_unitario), 0);
 
-        // Dados da NF-e (mesmo padrão já testado)
-        const dadosNFe = {
-            ide: {
-                cUF: 41,
-                natOp: natureza_operacao || 'Venda',
-                mod: 55,
-                serie: 1,
-                nNF: nNF,
-                tpNF: 1,
-                idDest: isMesmaUF ? 1 : 2,
-                cMunFG: 4101804,
-                tpImp: 1,
-                tpEmis: 1,
-                tpAmb: 1,
-                finNFe: 1,
-                indFinal: 1,
-                indPres: 0,
-                procEmi: 0,
-                verProc: '0'
+        // Gera o XML usando seu builder (já ajustado para produção)
+        const xml = gerarXmlNfe({
+            nNF,
+            serie: 1,
+            destinatario,
+            produtos,
+            cfop: cfopFinal,
+            natOp: natureza_operacao || 'Venda',
+            modFrete: modalidade_frete || '2',
+            valor_total: valorTotal
+        });
+
+        // Assina o XML
+        const certData = loadCertificates();
+        const xmlAssinado = assinarXml(xml, certData);
+
+        // Prepara o envelope SOAP (sem quebras de linha extras)
+        const xmlLimpo = xmlAssinado
+            .replace(/<\?xml.*?\?>/g, '')
+            .replace(/\r?\n/g, '')
+            .replace(/\t/g, '')
+            .replace(/>\s+</g, '><')
+            .trim();
+
+        const envelope = `<?xml version="1.0" encoding="utf-8"?><soap:Envelope xmlns:soap="http://schemas.xmlsoap.org/soap/envelope/" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xmlns:xsd="http://www.w3.org/2001/XMLSchema"><soap:Body><nfeDadosMsg xmlns="http://www.portalfiscal.inf.br/nfe/wsdl/NFeAutorizacao4">${xmlLimpo}</nfeDadosMsg></soap:Body></soap:Envelope>`;
+
+        // Salva o envelope para depuração (opcional)
+        fs.writeFileSync('/tmp/ultimo_envelope.xml', envelope);
+        console.log('📄 Envelope salvo em /tmp/ultimo_envelope.xml');
+
+        // Configura a requisição HTTPS
+        const options = {
+            hostname: 'nfe.sefa.pr.gov.br',
+            path: '/nfe/NFeAutorizacao4',
+            method: 'POST',
+            headers: {
+                'Content-Type': 'text/xml; charset=utf-8',
+                'SOAPAction': 'http://www.portalfiscal.inf.br/nfe/wsdl/NFeAutorizacao4/nfeDadosMsg',
+                'Content-Length': Buffer.byteLength(envelope)
             },
-            emit: {
-                CNPJ: '32830261000125',
-                xNome: 'Wheel Tech Bicycling Ltda',
-                xFant: 'Wheel Tech Bicycling',
-                IE: '9087859328',
-                CRT: 1,
-                IM: 'PR',
-                CNAE: '4763603',
-                fone: '4131501230',
-                enderEmit: {
-                    xLgr: 'R. Lourenco Jasiocha',
-                    nro: '1927',
-                    xBairro: 'Centro',
-                    cMun: 4101804,
-                    xMun: 'Araucaria',
-                    UF: 'PR',
-                    CEP: 83702090,
-                    cPais: 1058,
-                    xPais: 'BRASIL'
-                }
-            },
-            dest: {
-                CPF: cliente.documento.replace(/\D/g, ''),
-                xNome: cliente.nome,
-                enderDest: {
-                    xLgr: cliente.endereco,
-                    nro: cliente.numero || 'S/N',
-                    xBairro: cliente.bairro || 'Centro',
-                    cMun: cliente.codigo_ibge || 2800308,
-                    xMun: cliente.cidade,
-                    UF: cliente.uf,
-                    CEP: cliente.cep.replace(/\D/g, ''),
-                    cPais: 1058,
-                    xPais: 'BRASIL'
-                },
-                indIEDest: 9
-            },
-            det: produtos.map((prod, idx) => ({
-                nItem: idx + 1,
-                prod: {
-                    cProd: prod.sku,
-                    cEAN: 'SEM GTIN',
-                    xProd: prod.nome,
-                    NCM: prod.ncm || '87149990',
-                    CFOP: cfopFinal,
-                    uCom: 'PC',
-                    qCom: prod.quantidade,
-                    vUnCom: prod.valor_unitario,
-                    vProd: prod.quantidade * prod.valor_unitario,
-                    cEANTrib: 'SEM GTIN',
-                    uTrib: 'PC',
-                    qTrib: prod.quantidade,
-                    vUnTrib: prod.valor_unitario,
-                    indTot: 1
-                },
-                imposto: {
-                    vTotTrib: 0,
-                    ICMS: { ICMSSN102: { orig: 0, CSOSN: '102' } },
-                    PIS: { PISOutr: { CST: '49', vBC: prod.quantidade * prod.valor_unitario, pPIS: '0.0000', vPIS: '0.00' } },
-                    COFINS: { COFINSOutr: { CST: '49', vBC: prod.quantidade * prod.valor_unitario, pCOFINS: '0.0000', vCOFINS: '0.00' } }
-                }
-            })),
-            total: {
-                ICMSTot: {
-                    vBC: 0,
-                    vICMS: 0,
-                    vICMSDeson: 0,
-                    vFCP: 0,
-                    vBCST: 0,
-                    vST: 0,
-                    vFCPST: 0,
-                    vFCPSTRet: 0,
-                    vProd: valorTotal,
-                    vFrete: 0,
-                    vSeg: 0,
-                    vDesc: 0,
-                    vII: 0,
-                    vIPI: 0,
-                    vIPIDevol: 0,
-                    vPIS: 0,
-                    vCOFINS: 0,
-                    vOutro: 0,
-                    vTotTrib: 0,
-                    vNF: valorTotal
-                }
-            },
-            transp: { modFrete: modalidade_frete || '2' },
-            cobr: { fat: { nFat: nNF.toString(), vOrig: valorTotal, vDesc: 0, vLiq: valorTotal } },
-            pag: { detPag: [{ indPag: 0, tPag: '01', vPag: valorTotal }], vTroco: 0 },
-            infAdic: { infCpl: 'I - "DOCUMENTO EMITIDO POR ME OU EPP OPTANTE PELO SIMPLES NACIONAL";II - "NAO GERA DIREITO A CREDITO FISCAL DE ICMS, DE ISS E DE IPI".|Valor aproximado dos tributos: |R$ 35,87 federais|R$ 46,11 estaduais|Fonte: IBPT/empresometro.com.br 92589A|' },
-            infRespTec: {
-                CNPJ: '64555626000147',
-                xContato: 'MARIA ANTONIA MELO COSTA',
-                email: 'privacidade@iob.com.br',
-                fone: '1930043303',
-                idCSRT: '01',
-                hashCSRT: 'e+lX/2M6s4ch9hsc8f39dYz/Abs='
-            }
+            cert: certData.cert,
+            key: certData.privateKey,
+            ca: certData.ca,
+            rejectUnauthorized: false,
+            secureProtocol: 'TLSv1_2_method'
         };
 
-        // Gera o XML
-        const xml = await nfe.gerarXml(dadosNFe);
-        console.log('XML gerado com sucesso');
+        // Envia
+        const responseData = await new Promise((resolve, reject) => {
+            const req = https.request(options, (res) => {
+                let data = '';
+                res.on('data', chunk => data += chunk);
+                res.on('end', () => resolve(data));
+            });
+            req.on('error', reject);
+            req.write(envelope);
+            req.end();
+        });
 
-        // Envia para a SEFAZ
-        const resultado = await nfe.enviar(xml);
-        console.log('Resultado da SEFAZ:', resultado);
+        // Processa a resposta
+        const cStatMatch = responseData.match(/<cStat>(\d+)<\/cStat>/);
+        const xMotivoMatch = responseData.match(/<xMotivo>([^<]+)<\/xMotivo>/);
+        const protocoloMatch = responseData.match(/<nProt>(\d+)<\/nProt>/);
+        const chaveMatch = responseData.match(/<chNFe>([^<]+)<\/chNFe>/);
 
-        if (!resultado || resultado.retorno.cStat !== '100') {
-            throw new Error(`SEFAZ rejeitou: ${resultado?.retorno?.xMotivo || 'Erro desconhecido'} (cStat=${resultado?.retorno?.cStat || '?'})`);
+        if (!cStatMatch || cStatMatch[1] !== '100') {
+            throw new Error(`SEFAZ rejeitou: ${xMotivoMatch?.[1] || 'Erro desconhecido'} (cStat=${cStatMatch?.[1] || '?'})`);
         }
 
-        const chaveAcesso = resultado.retorno.chNFe;
-        const protocolo = resultado.retorno.nProt;
+        const protocolo = protocoloMatch[1];
+        const chaveAcesso = chaveMatch ? chaveMatch[1] : null;
 
         // Salva no Supabase
         await supabase.from('nfe_emitidas').insert({
             venda_id: venda_id || null,
             chave: chaveAcesso,
             protocolo: protocolo,
-            xml: xml,
+            xml: xmlAssinado,
             status: 'autorizada',
             cancelada: false,
             data_emissao: new Date().toISOString(),
@@ -202,7 +149,7 @@ async function emitirNFe(req, res) {
 
         res.json({ success: true, protocolo, chaveAcesso });
     } catch (error) {
-        console.error('Erro na emissão (node-nfe):', error);
+        console.error('❌ Erro na emissão:', error);
         res.status(500).json({ success: false, error: error.message });
     }
 }
