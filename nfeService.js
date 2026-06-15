@@ -4,18 +4,13 @@ const https = require('https');
 class NFEService {
     constructor(ambiente = 'producao') {
         this.ambiente = ambiente;
-        if (ambiente === 'producao') {
-            this.urlAutorizacao = 'https://nfe.sefa.pr.gov.br/nfe/NFeAutorizacao4';
-            this.urlEvento = 'https://nfe.sefa.pr.gov.br/nfe/NFeRecepcaoEvento4';
-            this.urlConsulta = 'https://nfe.sefa.pr.gov.br/nfe/NFeConsultaProtocolo4';
-        } else {
-            this.urlAutorizacao = 'https://homologacao.nfe.sefa.pr.gov.br/nfe/NFeAutorizacao4';
-            this.urlEvento = 'https://homologacao.nfe.sefa.pr.gov.br/nfe/NFeRecepcaoEvento4';
-            this.urlConsulta = 'https://homologacao.nfe.sefa.pr.gov.br/nfe/NFeConsultaProtocolo4';
-        }
+        // URLs de produção (fixas)
+        this.urlAutorizacao = 'https://nfe.sefa.pr.gov.br/nfe/NFeAutorizacao4';
+        this.urlEvento = 'https://nfe.sefa.pr.gov.br/nfe/NFeRecepcaoEvento4';
+        this.urlConsulta = 'https://nfe.sefa.pr.gov.br/nfe/NFeConsultaProtocolo4';
     }
 
-    // Limpa o XML (remove declaração, quebras de linha, espaços entre tags)
+    // Limpa o XML para envio (remove declaração, quebras de linha, tabs, espaços entre tags)
     _cleanXml(xml) {
         return xml
             .replace(/<\?xml.*?\?>/g, '')
@@ -27,7 +22,7 @@ class NFEService {
 
     // Envio de NF-e
     async sendNFe(xmlAssinado, certData) {
-        let xmlLimpo = this._cleanXml(xmlAssinado);
+        const xmlLimpo = this._cleanXml(xmlAssinado);
 
         const soapEnvelope = `<?xml version="1.0" encoding="utf-8"?><soap:Envelope xmlns:soap="http://schemas.xmlsoap.org/soap/envelope/" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xmlns:xsd="http://www.w3.org/2001/XMLSchema"><soap:Body><nfeDadosMsg xmlns="http://www.portalfiscal.inf.br/nfe/wsdl/NFeAutorizacao4">${xmlLimpo}</nfeDadosMsg></soap:Body></soap:Envelope>`;
 
@@ -51,9 +46,9 @@ class NFEService {
         return response.data;
     }
 
-    // Envio de evento de cancelamento (opcional)
+    // Envio de evento de cancelamento
     async sendEvento(xmlAssinado, certData) {
-        let xmlLimpo = this._cleanXml(xmlAssinado);
+        const xmlLimpo = this._cleanXml(xmlAssinado);
         const soapEnvelope = `<?xml version="1.0" encoding="utf-8"?><soap:Envelope xmlns:soap="http://schemas.xmlsoap.org/soap/envelope/" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xmlns:xsd="http://www.w3.org/2001/XMLSchema"><soap:Body><nfeDadosMsg xmlns="http://www.portalfiscal.inf.br/nfe/wsdl/NFeRecepcaoEvento4">${xmlLimpo}</nfeDadosMsg></soap:Body></soap:Envelope>`;
 
         const httpsAgent = new https.Agent({
@@ -76,9 +71,10 @@ class NFEService {
         return response.data;
     }
 
-    // Consulta de status da NF-e
+    // Consulta de situação da NF-e
     async consultarStatus(chaveAcesso, certData) {
-        const soapEnvelope = `<?xml version="1.0" encoding="utf-8"?><soap:Envelope xmlns:soap="http://schemas.xmlsoap.org/soap/envelope/"><soap:Body><nfeDadosMsg xmlns="http://www.portalfiscal.inf.br/nfe/wsdl/NFeConsultaProtocolo4"><consSitNFe xmlns="http://www.portalfiscal.inf.br/nfe" versao="4.00"><tpAmb>${this.ambiente === 'producao' ? '1' : '2'}</tpAmb><xServ>CONSULTAR</xServ><chNFe>${chaveAcesso}</chNFe></consSitNFe></nfeDadosMsg></soap:Body></soap:Envelope>`;
+        const tpAmb = this.ambiente === 'producao' ? '1' : '2';
+        const soapEnvelope = `<?xml version="1.0" encoding="utf-8"?><soap:Envelope xmlns:soap="http://schemas.xmlsoap.org/soap/envelope/"><soap:Body><nfeDadosMsg xmlns="http://www.portalfiscal.inf.br/nfe/wsdl/NFeConsultaProtocolo4"><consSitNFe xmlns="http://www.portalfiscal.inf.br/nfe" versao="4.00"><tpAmb>${tpAmb}</tpAmb><xServ>CONSULTAR</xServ><chNFe>${chaveAcesso}</chNFe></consSitNFe></nfeDadosMsg></soap:Body></soap:Envelope>`;
 
         const httpsAgent = new https.Agent({
             cert: certData.cert,
