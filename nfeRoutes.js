@@ -1,6 +1,11 @@
 const express = require('express');
+const router = express.Router();
+
+// Controlador para a emissão (usando node-nfe)
+const { emitirNFe } = require('./nfeControllerNodeNfe');
+
+// Demais funções do controlador original (exceto emitirNFe)
 const {
-    emitirNFe,
     cancelarNFe,
     listarNFesEmitidas,
     listarTransportadoras,
@@ -12,13 +17,11 @@ const {
     listarVendasSemNFE,
     listarVendasComNFE,
     buscarXMLPorChave,
-    testarEnvioXMLFixo      // função de teste (adicione no controller)
+    testarEnvioXMLFixo
 } = require('./nfeController');
 
-const router = express.Router();
-
 // Rotas principais
-router.post('/emitir', emitirNFe);
+router.post('/emitir', emitirNFe);                     // EMISSÃO com node-nfe
 router.post('/cancelar', cancelarNFe);
 router.get('/listar-nfes', listarNFesEmitidas);
 router.get('/transportadoras', listarTransportadoras);
@@ -31,7 +34,7 @@ router.get('/vendas-sem-nfe', listarVendasSemNFE);
 router.get('/vendas-com-nfe', listarVendasComNFE);
 router.get('/buscar-xml', buscarXMLPorChave);
 
-// Rota de teste (para enviar XML fixo e diagnosticar problemas)
+// Rota de teste (XML fixo)
 router.post('/testar-xml-fixo', testarEnvioXMLFixo);
 
 module.exports = router;
