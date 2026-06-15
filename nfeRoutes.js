@@ -42,14 +42,62 @@ router.get('/vendas-com-nfe', listarVendasComNFE);
 router.get('/buscar-xml', buscarXMLPorChave);
 router.post('/testar-xml-fixo', testarEnvioXMLFixo);
 
-// ===================== ROTA DE TESTE COM HTTPS NATIVO =====================
+// ===================== ROTA PARA GERAR XML DE TESTE (COMPARAR COM O QUE FUNCIONA) =====================
+router.post('/gerar-xml-teste', async (req, res) => {
+    try {
+        // Dados fixos do cliente que já teve NF-e autorizada (Saulo Luiz)
+        const dados = {
+            nNF: 50039,
+            serie: 1,
+            destinatario: {
+                CPF: '04371412505',
+                xNome: 'Saulo Luiz Silva Santos',
+                xLgr: 'Rua Goias',
+                nro: '1255',
+                xBairro: 'Siqueira Campos',
+                xMun: 'Aracaju',
+                UF: 'SE',
+                CEP: '49075280',
+                cMun: '2800308'   // Código IBGE de Aracaju/SE
+            },
+            produtos: [{
+                nome: 'Eixo Passante P/ Garfo C/ Cubo Dianteiro 15 X 100 P/ Fox 32',
+                quantidade: 1,
+                valor_unitario: 236.49,
+                sku: '239EPDI12T145P1500',
+                ncm: '87149990'
+            }],
+            cfop: '6108',
+            natOp: 'Venda',
+            modFrete: '2',
+            venda_id: 'MLB123456'
+        };
+
+        const certData = loadCertificates();
+        const xml = gerarXmlNfe(dados);
+        const xmlAssinado = assinarXml(xml, certData);
+
+        // Salva o XML no servidor
+        const filePath = '/tmp/xml_gerado_teste.xml';
+        fs.writeFileSync(filePath, xmlAssinado, 'utf8');
+
+        // Retorna o XML para download (ou visualização)
+        res.setHeader('Content-Type', 'application/xml');
+        res.setHeader('Content-Disposition', 'attachment; filename="xml_gerado_teste.xml"');
+        res.send(xmlAssinado);
+    } catch (error) {
+        console.error('Erro em /gerar-xml-teste:', error);
+        res.status(500).json({ error: error.message });
+    }
+});
+
+// ===================== ROTA DE TESTE COM HTTPS NATIVO (ENVELOPE SOAP) =====================
 router.post('/testar-soap-backend', async (req, res) => {
     try {
         console.log('📨 [testar-soap-backend] Iniciando...');
         const certData = loadCertificates();
 
-        // Dados fixos para teste (os mesmos que funcionaram no XML fixo)
-        const xml = gerarXmlNfe({
+        const dados = {
             nNF: 50038,
             serie: 1,
             destinatario: {
@@ -72,8 +120,9 @@ router.post('/testar-soap-backend', async (req, res) => {
             cfop: '5102',
             natOp: 'VENDA',
             modFrete: '9'
-        });
+        };
 
+        const xml = gerarXmlNfe(dados);
         const xmlAssinado = assinarXml(xml, certData);
         const xmlLimpo = xmlAssinado
             .replace(/<\?xml.*?\?>/g, '')
@@ -84,7 +133,7 @@ router.post('/testar-soap-backend', async (req, res) => {
 
         const soapEnvelope = `<?xml version="1.0" encoding="utf-8"?><soap:Envelope xmlns:soap="http://schemas.xmlsoap.org/soap/envelope/" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xmlns:xsd="http://www.w3.org/2001/XMLSchema"><soap:Body><nfeDadosMsg xmlns="http://www.portalfiscal.inf.br/nfe/wsdl/NFeAutorizacao4">${xmlLimpo}</nfeDadosMsg></soap:Body></soap:Envelope>`;
 
-        const urlObj = new URL('https://homologacao.nfe.sefa.pr.gov.br/nfe/NFeAutorizacao4');
+        const urlObj = new URL('https://nfe.sefa.pr.gov.br/nfe/NFeAutorizacao4');
         const options = {
             hostname: urlObj.hostname,
             path: urlObj.pathname,
