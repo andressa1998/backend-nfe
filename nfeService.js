@@ -1,10 +1,10 @@
+// nfeService.js
 const axios = require('axios');
 const https = require('https');
 
 class NFEService {
     constructor(ambiente = 'producao') {
         this.ambiente = ambiente;
-
         if (ambiente === 'homologacao') {
             this.urlAutorizacao = 'https://homologacao.nfe.sefa.pr.gov.br/nfe/NFeAutorizacao4';
             this.urlEvento = 'https://homologacao.nfe.sefa.pr.gov.br/nfe/NFeRecepcaoEvento4';
@@ -16,95 +16,74 @@ class NFEService {
         }
     }
 
-    // Limpa o XML para envio (remove declaração, quebras de linha, tabs, espaços entre tags)
-    _cleanXml(xml) {
-        return xml
-            .replace(/<\?xml.*?\?>/g, '')
-            .replace(/\r?\n/g, '')
-            .replace(/\t/g, '')
-            .replace(/>\s+</g, '><')
-            .trim();
-    }
+    // ❌ REMOVIDA a função _cleanXml – não vamos mais limpar o XML assinado
 
-    // Envio de NF-e
     async sendNFe(xmlAssinado, certData) {
+        // Envelope SOAP sem modificar o XML assinado
+        const soapEnvelope = `<?xml version="1.0" encoding="utf-8"?>
+<soap:Envelope xmlns:soap="http://schemas.xmlsoap.org/soap/envelope/"
+               xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+               xmlns:xsd="http://www.w3.org/2001/XMLSchema">
+    <soap:Body>
+        <nfeDadosMsg xmlns="http://www.portalfiscal.inf.br/nfe/wsdl/NFeAutorizacao4">
+            ${xmlAssinado}
+        </nfeDadosMsg>
+    </soap:Body>
+</soap:Envelope>`;
 
-    const xmlLimpo = this._cleanXml(xmlAssinado);
+        const httpsAgent = new https.Agent({
+            cert: certData.cert,
+            key: certData.privateKey,
+            ca: certData.ca || undefined,
+            rejectUnauthorized: false,
+            secureProtocol: 'TLSv1_2_method',
+            ciphers: 'DEFAULT@SECLEVEL=1'
+        });
 
-    const soapEnvelope = `<?xml version="1.0" encoding="utf-8"?>
-    <soap:Envelope xmlns:soap="http://schemas.xmlsoap.org/soap/envelope/"
-                   xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
-                   xmlns:xsd="http://www.w3.org/2001/XMLSchema">
+        console.log('📨 Enviando para SEFAZ URL:', this.urlAutorizacao);
+        console.log('📄 Envelope SOAP (primeiros 800 caracteres):', soapEnvelope.substring(0, 800));
 
-        <soap:Body>
-            <nfeDadosMsg xmlns="http://www.portalfiscal.inf.br/nfe/wsdl/NFeAutorizacao4">
-                ${xmlLimpo}
-            </nfeDadosMsg>
-        </soap:Body>
-
-    </soap:Envelope>`;
-
-    const httpsAgent = new https.Agent({
-        cert: certData.cert,
-        key: certData.privateKey,
-        ca: certData.ca || undefined,
-        rejectUnauthorized: false,
-        secureProtocol: 'TLSv1_2_method',
-        ciphers: 'DEFAULT@SECLEVEL=1'
-    });
-
-    try {
-
-        console.log('================================');
-        console.log('INICIANDO ENVIO PARA SEFAZ');
-        console.log('================================');
-        console.log('URL:', this.urlAutorizacao);
-
-        const response = await axios.post(
-            this.urlAutorizacao,
-            soapEnvelope,
-            {
+        try {
+            const response = await axios.post(this.urlAutorizacao, soapEnvelope, {
                 httpsAgent,
                 headers: {
                     'Content-Type': 'text/xml; charset=utf-8',
                     'SOAPAction': 'http://www.portalfiscal.inf.br/nfe/wsdl/NFeAutorizacao4/nfeDadosMsg'
                 },
                 timeout: 60000
+            });
+
+            console.log('✅ Resposta da SEFAZ (status):', response.status);
+            console.log('📄 Resposta completa:', response.data);
+
+            // Extrai cStat e xMotivo para debug
+            const cStat = response.data.match(/<cStat>(\d+)<\/cStat>/)?.[1] || 'N/A';
+            const xMotivo = response.data.match(/<xMotivo>([^<]+)<\/xMotivo>/)?.[1] || 'N/A';
+            console.log(`📊 cStat=${cStat}, xMotivo=${xMotivo}`);
+
+            return response.data;
+        } catch (error) {
+            console.error('❌ Erro no envio para SEFAZ:');
+            if (error.response) {
+                console.error('Status:', error.response.status);
+                console.error('Dados:', error.response.data);
+            } else {
+                console.error(error.message);
             }
-        );
-
-        console.log('================================');
-        console.log('STATUS HTTP:', response.status);
-        console.log('RESPOSTA COMPLETA DA SEFAZ');
-        console.log('================================');
-        console.log(response.data);
-        console.log('================================');
-
-        return response.data;
-
-    } catch (error) {
-
-        console.log('================================');
-        console.log('ERRO NO ENVIO PARA SEFAZ');
-        console.log('================================');
-
-        if (error.response) {
-            console.log('STATUS HTTP:', error.response.status);
-            console.log('RESPOSTA COMPLETA:');
-            console.log(error.response.data);
+            throw error;
         }
-
-        console.log('ERRO COMPLETO:');
-        console.log(error);
-
-        throw error;
     }
-}
 
-    // Envio de evento de cancelamento
+    // Os métodos sendEvento e consultarStatus permanecem iguais, mas com a mesma lógica (sem limpeza)
     async sendEvento(xmlAssinado, certData) {
-        const xmlLimpo = this._cleanXml(xmlAssinado);
-        const soapEnvelope = `<?xml version="1.0" encoding="utf-8"?><soap:Envelope xmlns:soap="http://schemas.xmlsoap.org/soap/envelope/" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xmlns:xsd="http://www.w3.org/2001/XMLSchema"><soap:Body><nfeDadosMsg xmlns="http://www.portalfiscal.inf.br/nfe/wsdl/NFeRecepcaoEvento4">${xmlLimpo}</nfeDadosMsg></soap:Body></soap:Envelope>`;
+        const soapEnvelope = `<?xml version="1.0" encoding="utf-8"?>
+<soap:Envelope xmlns:soap="http://schemas.xmlsoap.org/soap/envelope/">
+    <soap:Body>
+        <nfeDadosMsg xmlns="http://www.portalfiscal.inf.br/nfe/wsdl/NFeRecepcaoEvento4">
+            ${xmlAssinado}
+        </nfeDadosMsg>
+    </soap:Body>
+</soap:Envelope>`;
 
         const httpsAgent = new https.Agent({
             cert: certData.cert,
@@ -126,10 +105,20 @@ class NFEService {
         return response.data;
     }
 
-    // Consulta de situação da NF-e
     async consultarStatus(chaveAcesso, certData) {
         const tpAmb = this.ambiente === 'producao' ? '1' : '2';
-        const soapEnvelope = `<?xml version="1.0" encoding="utf-8"?><soap:Envelope xmlns:soap="http://schemas.xmlsoap.org/soap/envelope/"><soap:Body><nfeDadosMsg xmlns="http://www.portalfiscal.inf.br/nfe/wsdl/NFeConsultaProtocolo4"><consSitNFe xmlns="http://www.portalfiscal.inf.br/nfe" versao="4.00"><tpAmb>${tpAmb}</tpAmb><xServ>CONSULTAR</xServ><chNFe>${chaveAcesso}</chNFe></consSitNFe></nfeDadosMsg></soap:Body></soap:Envelope>`;
+        const soapEnvelope = `<?xml version="1.0" encoding="utf-8"?>
+<soap:Envelope xmlns:soap="http://schemas.xmlsoap.org/soap/envelope/">
+    <soap:Body>
+        <nfeDadosMsg xmlns="http://www.portalfiscal.inf.br/nfe/wsdl/NFeConsultaProtocolo4">
+            <consSitNFe xmlns="http://www.portalfiscal.inf.br/nfe" versao="4.00">
+                <tpAmb>${tpAmb}</tpAmb>
+                <xServ>CONSULTAR</xServ>
+                <chNFe>${chaveAcesso}</chNFe>
+            </consSitNFe>
+        </nfeDadosMsg>
+    </soap:Body>
+</soap:Envelope>`;
 
         const httpsAgent = new https.Agent({
             cert: certData.cert,

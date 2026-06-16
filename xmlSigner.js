@@ -1,3 +1,4 @@
+// xmlSigner.js
 const { SignedXml } = require('xml-crypto');
 
 function assinarXml(xml, certData) {
@@ -20,7 +21,7 @@ function assinarXml(xml, certData) {
         .replace(/-----BEGIN CERTIFICATE-----/g, '')
         .replace(/-----END CERTIFICATE-----/g, '')
         .replace(/\r?\n/g, '');
-    
+
     sig.getKeyInfoContent = function () {
         return `<X509Data><X509Certificate>${certClean}</X509Certificate></X509Data>`;
     };
@@ -30,8 +31,12 @@ function assinarXml(xml, certData) {
     });
 
     let signedXml = sig.getSignedXml();
-    signedXml = signedXml.replace('<Signature>', '<Signature xmlns="http://www.w3.org/2000/09/xmldsig#">');
+
+    // Garante que o elemento Signature tenha o namespace correto
+    // e remove possíveis xmlns vazios
+    signedXml = signedXml.replace(/<Signature(?=\s|>)/, '<Signature xmlns="http://www.w3.org/2000/09/xmldsig#"');
     signedXml = signedXml.replace(/xmlns=""/g, '');
+
     return signedXml;
 }
 

@@ -1,3 +1,14 @@
+// xmlBuilder.js
+function escapeXml(unsafe) {
+    if (!unsafe) return '';
+    return unsafe
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;')
+        .replace(/'/g, '&apos;');
+}
+
 function calcularDV(chaveSemDV) {
     const multiplicadores = [2, 3, 4, 5, 6, 7, 8, 9];
     let soma = 0;
@@ -17,7 +28,7 @@ function gerarXmlNfe(dados) {
         nNF,
         serie = 1,
         cNF = String(Math.floor(Math.random() * 100000000)).padStart(8, '0'),
-        tpAmb = '2', // padrão homologação, use '1' para produção
+        tpAmb = '2', // '1' para produção
         emitente = {
             CNPJ: '32830261000125',
             xNome: 'Wheel Tech Bicycling Ltda',
@@ -63,7 +74,7 @@ function gerarXmlNfe(dados) {
     const cDV = calcularDV(chaveSemDV);
     const idNFe = `NFe${chaveSemDV}${cDV}`;
 
-    let documento = destinatario.CPF || destinatario.CNPJ;
+    let documento = (destinatario.CPF || destinatario.CNPJ || '').replace(/\D/g, '');
     const tipoDoc = documento.length === 14 ? 'CNPJ' : 'CPF';
 
     let totalProd = 0;
@@ -71,12 +82,14 @@ function gerarXmlNfe(dados) {
     produtos.forEach((prod, idx) => {
         const vProd = prod.quantidade * prod.valor_unitario;
         totalProd += vProd;
+        const nomeProd = escapeXml(prod.nome || '');
+        const sku = escapeXml(prod.sku || '');
         produtosXml += `
         <det nItem="${idx + 1}">
             <prod>
-                <cProd>${prod.sku || ''}</cProd>
+                <cProd>${sku}</cProd>
                 <cEAN>SEM GTIN</cEAN>
-                <xProd>${(prod.nome || '').replace(/[&<>]/g, '')}</xProd>
+                <xProd>${nomeProd}</xProd>
                 <NCM>${prod.ncm || '87149990'}</NCM>
                 <CFOP>${cfop}</CFOP>
                 <uCom>UN</uCom>
@@ -110,13 +123,27 @@ function gerarXmlNfe(dados) {
         </det>`;
     });
 
+    // Escapar campos do emitente e destinatário
+    const xNomeEmit = escapeXml(emitente.xNome);
+    const xFantEmit = escapeXml(emitente.xFant);
+    const xLgrEmit = escapeXml(emitente.enderEmit.xLgr);
+    const xBairroEmit = escapeXml(emitente.enderEmit.xBairro);
+    const xMunEmit = escapeXml(emitente.enderEmit.xMun);
+
+    const xNomeDest = escapeXml(destinatario.xNome);
+    const xLgrDest = escapeXml(destinatario.xLgr || '');
+    const nroDest = escapeXml(destinatario.nro || 'S/N');
+    const xBairroDest = escapeXml(destinatario.xBairro || '');
+    const xMunDest = escapeXml(destinatario.xMun || '');
+    const cMunDest = destinatario.cMun || '4101804';
+
     const xml = `<?xml version="1.0" encoding="UTF-8"?>
 <NFe xmlns="http://www.portalfiscal.inf.br/nfe">
     <infNFe versao="4.00" Id="${idNFe}">
         <ide>
             <cUF>${cUF}</cUF>
             <cNF>${cNF}</cNF>
-            <natOp>${natOp}</natOp>
+            <natOp>${escapeXml(natOp)}</natOp>
             <mod>55</mod>
             <serie>${serie}</serie>
             <nNF>${nNF}</nNF>
@@ -137,18 +164,18 @@ function gerarXmlNfe(dados) {
         </ide>
         <emit>
             <CNPJ>${emitente.CNPJ}</CNPJ>
-            <xNome>${emitente.xNome}</xNome>
-            <xFant>${emitente.xFant}</xFant>
+            <xNome>${xNomeEmit}</xNome>
+            <xFant>${xFantEmit}</xFant>
             <enderEmit>
-                <xLgr>${emitente.enderEmit.xLgr}</xLgr>
+                <xLgr>${xLgrEmit}</xLgr>
                 <nro>${emitente.enderEmit.nro}</nro>
-                <xBairro>${emitente.enderEmit.xBairro}</xBairro>
+                <xBairro>${xBairroEmit}</xBairro>
                 <cMun>${emitente.enderEmit.cMun}</cMun>
-                <xMun>${emitente.enderEmit.xMun}</xMun>
+                <xMun>${xMunEmit}</xMun>
                 <UF>${emitente.enderEmit.UF}</UF>
                 <CEP>${emitente.enderEmit.CEP}</CEP>
                 <cPais>${emitente.enderEmit.cPais}</cPais>
-                <xPais>${emitente.enderEmit.xPais}</xPais>
+                <xPais>${escapeXml(emitente.enderEmit.xPais)}</xPais>
                 <fone>${emitente.fone}</fone>
             </enderEmit>
             <IE>${emitente.IE}</IE>
@@ -156,13 +183,13 @@ function gerarXmlNfe(dados) {
         </emit>
         <dest>
             <${tipoDoc}>${documento}</${tipoDoc}>
-            <xNome>${destinatario.xNome}</xNome>
+            <xNome>${xNomeDest}</xNome>
             <enderDest>
-                <xLgr>${destinatario.xLgr}</xLgr>
-                <nro>${destinatario.nro}</nro>
-                <xBairro>${destinatario.xBairro}</xBairro>
-                <cMun>${destinatario.cMun}</cMun>
-                <xMun>${destinatario.xMun}</xMun>
+                <xLgr>${xLgrDest}</xLgr>
+                <nro>${nroDest}</nro>
+                <xBairro>${xBairroDest}</xBairro>
+                <cMun>${cMunDest}</cMun>
+                <xMun>${xMunDest}</xMun>
                 <UF>${destinatario.UF}</UF>
                 <CEP>${destinatario.CEP}</CEP>
                 <cPais>1058</cPais>
@@ -179,6 +206,8 @@ function gerarXmlNfe(dados) {
                 <vFCP>0.00</vFCP>
                 <vBCST>0.00</vBCST>
                 <vST>0.00</vST>
+                <vFCPST>0.00</vFCPST>
+                <vFCPSTRet>0.00</vFCPSTRet>
                 <vProd>${totalProd.toFixed(2)}</vProd>
                 <vFrete>0.00</vFrete>
                 <vSeg>0.00</vSeg>
@@ -188,7 +217,7 @@ function gerarXmlNfe(dados) {
                 <vIPIDevol>0.00</vIPIDevol>
                 <vPIS>0.00</vPIS>
                 <vCOFINS>0.00</vCOFINS>
-                                <vOutro>0.00</vOutro>
+                <vOutro>0.00</vOutro>
                 <vNF>${totalProd.toFixed(2)}</vNF>
                 <vTotTrib>0.00</vTotTrib>
             </ICMSTot>

@@ -1,3 +1,4 @@
+// utils.js
 const forge = require('node-forge');
 
 function loadCertificates() {
@@ -26,10 +27,15 @@ function loadCertificates() {
     }
     const cert = forge.pki.certificateToPem(certBags[forge.pki.oids.certBag][0].cert);
 
-    // Cadeia (se houver mais de um certificado)
+    // Cadeia de certificados (se houver mais de um certificado)
     let ca = null;
     if (certBags[forge.pki.oids.certBag].length > 1) {
-        ca = certBags[forge.pki.oids.certBag].slice(1).map(c => forge.pki.certificateToPem(c.cert)).join('');
+        // Pega todos os certificados a partir do segundo (se houver)
+        const caCerts = certBags[forge.pki.oids.certBag].slice(1);
+        ca = caCerts.map(c => forge.pki.certificateToPem(c.cert)).join('');
+        console.log(`✅ Extraídos ${caCerts.length} certificado(s) da cadeia.`);
+    } else {
+        console.warn('⚠️ Nenhum certificado da cadeia encontrado. A conexão TLS pode falhar.');
     }
 
     return { privateKey, cert, ca };
