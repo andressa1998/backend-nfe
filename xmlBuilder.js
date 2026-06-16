@@ -188,7 +188,7 @@ function gerarXmlNfe(dados) {
                 <vIPIDevol>0.00</vIPIDevol>
                 <vPIS>0.00</vPIS>
                 <vCOFINS>0.00</vCOFINS>
-                <vOutro>0.00</vOutro>
+                                <vOutro>0.00</vOutro>
                 <vNF>${totalProd.toFixed(2)}</vNF>
                 <vTotTrib>0.00</vTotTrib>
             </ICMSTot>
@@ -196,33 +196,12 @@ function gerarXmlNfe(dados) {
         <transp>
             <modFrete>${modFrete}</modFrete>
         </transp>
-        <cobr>
-            <fat>
-                <nFat>${nNFStr}</nFat>
-                <vOrig>${totalProd.toFixed(2)}</vOrig>
-                <vDesc>0.00</vDesc>
-                <vLiq>${totalProd.toFixed(2)}</vLiq>
-            </fat>
-        </cobr>
         <pag>
             <detPag>
-                <indPag>0</indPag>
                 <tPag>01</tPag>
                 <vPag>${totalProd.toFixed(2)}</vPag>
             </detPag>
-            <vTroco>0.00</vTroco>
         </pag>
-        <infAdic>
-            <infCpl>I - "DOCUMENTO EMITIDO POR ME OU EPP OPTANTE PELO SIMPLES NACIONAL";II - "NAO GERA DIREITO A CREDITO FISCAL DE ICMS, DE ISS E DE IPI".|Valor aproximado dos tributos: |R$ 35,87 federais|R$ 46,11 estaduais|Fonte: IBPT/empresometro.com.br 92589A|</infCpl>
-        </infAdic>
-        <infRespTec>
-            <CNPJ>64555626000147</CNPJ>
-            <xContato>MARIA ANTONIA MELO COSTA</xContato>
-            <email>privacidade@iob.com.br</email>
-            <fone>1930043303</fone>
-            <idCSRT>01</idCSRT>
-            <hashCSRT>e+lX/2M6s4ch9hsc8f39dYz/Abs=</hashCSRT>
-        </infRespTec>
     </infNFe>
 </NFe>`;
 
