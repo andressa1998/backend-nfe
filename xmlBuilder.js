@@ -34,6 +34,8 @@ function gerarXmlNfe(dados) {
             xNome: 'Wheel Tech Bicycling Ltda',
             xFant: 'Wheel Tech Bicycling',
             IE: '9087859328',
+            IM: 'PR',         // Inscrição Municipal (se houver)
+            CNAE: '4763603',  // Código CNAE
             CRT: '1',
             fone: '4131501230',
             enderEmit: {
@@ -52,7 +54,19 @@ function gerarXmlNfe(dados) {
         produtos,
         cfop,
         natOp = 'Venda',
-        modFrete = '9'
+        modFrete = '2', // 2 = frete por conta do destinatário (Mercado Envios)
+        transportadora = null, // { CNPJ, xNome, IE, xEnder, xMun, UF }
+        volumes = { qVol: 0, pesoL: 0, pesoB: 0 },
+        fatura = null, // { nFat, vOrig, vDesc, vLiq }
+        infAdic = null, // string com observações
+        respTec = {
+            CNPJ: '64555626000147',
+            xContato: 'MARIA ANTONIA MELO COSTA',
+            email: 'privacidade@iob.com.br',
+            fone: '1930043303',
+            idCSRT: '01',
+            hashCSRT: 'z9ywwhAy7fsb/3QyV5mYiSRZnuA='
+        }
     } = dados;
 
     if (!destinatario || !destinatario.xNome) {
@@ -64,7 +78,7 @@ function gerarXmlNfe(dados) {
     const dhSaiEnt = dhEmi;
     const ano = agora.getFullYear().toString().slice(-2);
     const mes = (agora.getMonth() + 1).toString().padStart(2, '0');
-    const cUF = '41'; // Paraná
+    const cUF = '41';
 
     const chaveSemDV = cUF + ano + mes + emitente.CNPJ + '55' +
         serie.toString().padStart(3, '0') +
@@ -78,12 +92,19 @@ function gerarXmlNfe(dados) {
     const tipoDoc = documento.length === 14 ? 'CNPJ' : 'CPF';
 
     let totalProd = 0;
+    let totalTrib = 0; // aproximado
     let produtosXml = '';
     produtos.forEach((prod, idx) => {
         const vProd = prod.quantidade * prod.valor_unitario;
         totalProd += vProd;
+        // Estima tributos (exemplo: 4.02% para este produto, ajuste conforme necessidade)
+        const vTotTrib = vProd * 0.0402;
+        totalTrib += vTotTrib;
+
         const nomeProd = escapeXml(prod.nome || '');
         const sku = escapeXml(prod.sku || '');
+        const cfopProd = prod.cfop || cfop;
+
         produtosXml += `
         <det nItem="${idx + 1}">
             <prod>
@@ -91,33 +112,40 @@ function gerarXmlNfe(dados) {
                 <cEAN>SEM GTIN</cEAN>
                 <xProd>${nomeProd}</xProd>
                 <NCM>${prod.ncm || '87149990'}</NCM>
-                <CFOP>${cfop}</CFOP>
-                <uCom>UN</uCom>
+                <CFOP>${cfopProd}</CFOP>
+                <uCom>${prod.uCom || 'PC'}</uCom>
                 <qCom>${prod.quantidade.toFixed(4)}</qCom>
-                <vUnCom>${prod.valor_unitario.toFixed(2)}</vUnCom>
+                <vUnCom>${prod.valor_unitario.toFixed(5)}</vUnCom>
                 <vProd>${vProd.toFixed(2)}</vProd>
                 <cEANTrib>SEM GTIN</cEANTrib>
-                <uTrib>UN</uTrib>
+                <uTrib>${prod.uTrib || 'PC'}</uTrib>
                 <qTrib>${prod.quantidade.toFixed(4)}</qTrib>
-                <vUnTrib>${prod.valor_unitario.toFixed(2)}</vUnTrib>
+                <vUnTrib>${prod.valor_unitario.toFixed(5)}</vUnTrib>
                 <indTot>1</indTot>
             </prod>
             <imposto>
+                <vTotTrib>${vTotTrib.toFixed(2)}</vTotTrib>
                 <ICMS>
                     <ICMSSN102>
-                        <orig>0</orig>
+                        <orig>${prod.orig || '2'}</orig>
                         <CSOSN>102</CSOSN>
                     </ICMSSN102>
                 </ICMS>
                 <PIS>
-                    <PISNT>
-                        <CST>07</CST>
-                    </PISNT>
+                    <PISOutr>
+                        <CST>49</CST>
+                        <vBC>${vProd.toFixed(2)}</vBC>
+                        <pPIS>0.0000</pPIS>
+                        <vPIS>0.00</vPIS>
+                    </PISOutr>
                 </PIS>
                 <COFINS>
-                    <COFINSNT>
-                        <CST>07</CST>
-                    </COFINSNT>
+                    <COFINSOutr>
+                        <CST>49</CST>
+                        <vBC>${vProd.toFixed(2)}</vBC>
+                        <pCOFINS>0.0000</pCOFINS>
+                        <vCOFINS>0.00</vCOFINS>
+                    </COFINSOutr>
                 </COFINS>
             </imposto>
         </det>`;
@@ -133,9 +161,79 @@ function gerarXmlNfe(dados) {
     const xNomeDest = escapeXml(destinatario.xNome);
     const xLgrDest = escapeXml(destinatario.xLgr || '');
     const nroDest = escapeXml(destinatario.nro || 'S/N');
+    const xCplDest = escapeXml(destinatario.xCpl || '');
     const xBairroDest = escapeXml(destinatario.xBairro || '');
     const xMunDest = escapeXml(destinatario.xMun || '');
     const cMunDest = destinatario.cMun || '4101804';
+
+    // Montar transportadora (se fornecida)
+    let transportaXml = '';
+    if (transportadora) {
+        transportaXml = `
+        <transporta>
+            <CNPJ>${transportadora.CNPJ}</CNPJ>
+            <xNome>${escapeXml(transportadora.xNome)}</xNome>
+            <IE>${escapeXml(transportadora.IE || 'ISENTO')}</IE>
+            <xEnder>${escapeXml(transportadora.xEnder || '')}</xEnder>
+            <xMun>${escapeXml(transportadora.xMun || '')}</xMun>
+            <UF>${transportadora.UF || ''}</UF>
+        </transporta>`;
+    }
+
+    // Volumes
+    const volumesXml = `
+        <vol>
+            <qVol>${volumes.qVol || 0}</qVol>
+            <pesoL>${(volumes.pesoL || 0).toFixed(3)}</pesoL>
+            <pesoB>${(volumes.pesoB || 0).toFixed(3)}</pesoB>
+        </vol>`;
+
+    // Fatura (cobrança)
+    let faturaXml = '';
+    if (fatura) {
+        faturaXml = `
+        <cobr>
+            <fat>
+                <nFat>${escapeXml(fatura.nFat || '001')}</nFat>
+                <vOrig>${(fatura.vOrig || totalProd).toFixed(2)}</vOrig>
+                <vDesc>${(fatura.vDesc || 0).toFixed(2)}</vDesc>
+                <vLiq>${(fatura.vLiq || totalProd).toFixed(2)}</vLiq>
+            </fat>
+        </cobr>`;
+    }
+
+    // Pagamento
+    const pagXml = `
+        <pag>
+            <detPag>
+                <indPag>0</indPag>
+                <tPag>01</tPag>
+                <vPag>${totalProd.toFixed(2)}</vPag>
+            </detPag>
+            <vTroco>0.00</vTroco>
+        </pag>`;
+
+    // Informações adicionais
+    let infAdicXml = '';
+    if (infAdic) {
+        infAdicXml = `
+        <infAdic>
+            <infCpl>${escapeXml(infAdic)}</infCpl>
+        </infAdic>`;
+    }
+
+    // Responsável técnico (obrigatório)
+    const respTecXml = `
+        <infRespTec>
+            <CNPJ>${respTec.CNPJ}</CNPJ>
+            <xContato>${escapeXml(respTec.xContato)}</xContato>
+            <email>${escapeXml(respTec.email)}</email>
+            <fone>${respTec.fone}</fone>
+            <idCSRT>${respTec.idCSRT}</idCSRT>
+            <hashCSRT>${respTec.hashCSRT}</hashCSRT>
+        </infRespTec>`;
+
+    const idDest = (destinatario.UF === emitente.enderEmit.UF) ? '1' : '2';
 
     const xml = `<?xml version="1.0" encoding="UTF-8"?>
 <NFe xmlns="http://www.portalfiscal.inf.br/nfe">
@@ -150,7 +248,7 @@ function gerarXmlNfe(dados) {
             <dhEmi>${dhEmi}</dhEmi>
             <dhSaiEnt>${dhSaiEnt}</dhSaiEnt>
             <tpNF>1</tpNF>
-            <idDest>${destinatario.UF === emitente.enderEmit.UF ? '1' : '2'}</idDest>
+            <idDest>${idDest}</idDest>
             <cMunFG>${emitente.enderEmit.cMun}</cMunFG>
             <tpImp>1</tpImp>
             <tpEmis>1</tpEmis>
@@ -158,9 +256,10 @@ function gerarXmlNfe(dados) {
             <tpAmb>${tpAmb}</tpAmb>
             <finNFe>1</finNFe>
             <indFinal>1</indFinal>
-            <indPres>1</indPres>
+            <indPres>9</indPres>
+            <indIntermed>0</indIntermed>
             <procEmi>0</procEmi>
-            <verProc>1.0</verProc>
+            <verProc>0</verProc>
         </ide>
         <emit>
             <CNPJ>${emitente.CNPJ}</CNPJ>
@@ -179,6 +278,8 @@ function gerarXmlNfe(dados) {
                 <fone>${emitente.fone}</fone>
             </enderEmit>
             <IE>${emitente.IE}</IE>
+            <IM>${emitente.IM || ''}</IM>
+            <CNAE>${emitente.CNAE || ''}</CNAE>
             <CRT>${emitente.CRT}</CRT>
         </emit>
         <dest>
@@ -187,6 +288,7 @@ function gerarXmlNfe(dados) {
             <enderDest>
                 <xLgr>${xLgrDest}</xLgr>
                 <nro>${nroDest}</nro>
+                ${xCplDest ? `<xCpl>${xCplDest}</xCpl>` : ''}
                 <xBairro>${xBairroDest}</xBairro>
                 <cMun>${cMunDest}</cMun>
                 <xMun>${xMunDest}</xMun>
@@ -205,7 +307,7 @@ function gerarXmlNfe(dados) {
                 <vICMSDeson>0.00</vICMSDeson>
                 <vFCP>0.00</vFCP>
                 <vBCST>0.00</vBCST>
-                <vST>0.00</vST>
+                <vST>0</vST>
                 <vFCPST>0.00</vFCPST>
                 <vFCPSTRet>0.00</vFCPSTRet>
                 <vProd>${totalProd.toFixed(2)}</vProd>
@@ -219,18 +321,18 @@ function gerarXmlNfe(dados) {
                 <vCOFINS>0.00</vCOFINS>
                 <vOutro>0.00</vOutro>
                 <vNF>${totalProd.toFixed(2)}</vNF>
-                <vTotTrib>0.00</vTotTrib>
+                <vTotTrib>${totalTrib.toFixed(2)}</vTotTrib>
             </ICMSTot>
         </total>
         <transp>
             <modFrete>${modFrete}</modFrete>
+            ${transportaXml}
+            ${volumesXml}
         </transp>
-        <pag>
-            <detPag>
-                <tPag>01</tPag>
-                <vPag>${totalProd.toFixed(2)}</vPag>
-            </detPag>
-        </pag>
+        ${faturaXml}
+        ${pagXml}
+        ${infAdicXml}
+        ${respTecXml}
     </infNFe>
 </NFe>`;
 
