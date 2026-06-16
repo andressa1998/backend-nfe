@@ -16,10 +16,9 @@ class NFEService {
         }
     }
 
-    // ❌ REMOVIDA a função _cleanXml – não vamos mais limpar o XML assinado
-
+    // Envio de NF-e
     async sendNFe(xmlAssinado, certData) {
-        // Envelope SOAP sem modificar o XML assinado
+        // Não modificar o XML assinado – ele já está no formato correto
         const soapEnvelope = `<?xml version="1.0" encoding="utf-8"?>
 <soap:Envelope xmlns:soap="http://schemas.xmlsoap.org/soap/envelope/"
                xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
@@ -31,17 +30,19 @@ class NFEService {
     </soap:Body>
 </soap:Envelope>`;
 
+        // Criação do agente HTTPS com o certificado e a cadeia
         const httpsAgent = new https.Agent({
             cert: certData.cert,
             key: certData.privateKey,
             ca: certData.ca || undefined,
-            rejectUnauthorized: false,
+            rejectUnauthorized: false, // Em homologação, pode ser false; em produção, true
             secureProtocol: 'TLSv1_2_method',
             ciphers: 'DEFAULT@SECLEVEL=1'
         });
 
+        // Log do envelope completo (apenas em desenvolvimento)
         console.log('📨 Enviando para SEFAZ URL:', this.urlAutorizacao);
-        console.log('📄 Envelope SOAP (primeiros 800 caracteres):', soapEnvelope.substring(0, 800));
+        console.log('📄 Envelope SOAP completo (primeiros 1500 caracteres):', soapEnvelope.substring(0, 1500));
 
         try {
             const response = await axios.post(this.urlAutorizacao, soapEnvelope, {
@@ -54,9 +55,14 @@ class NFEService {
             });
 
             console.log('✅ Resposta da SEFAZ (status):', response.status);
-            console.log('📄 Resposta completa:', response.data);
+            console.log('📄 Resposta completa (se houver):', response.data || '(vazia)');
 
-            // Extrai cStat e xMotivo para debug
+            // Se a resposta estiver vazia, lança erro com detalhes
+            if (!response.data || response.data.trim() === '') {
+                throw new Error('Resposta vazia da SEFAZ – verifique a conexão TLS e o certificado.');
+            }
+
+            // Extrai cStat e xMotivo para diagnóstico
             const cStat = response.data.match(/<cStat>(\d+)<\/cStat>/)?.[1] || 'N/A';
             const xMotivo = response.data.match(/<xMotivo>([^<]+)<\/xMotivo>/)?.[1] || 'N/A';
             console.log(`📊 cStat=${cStat}, xMotivo=${xMotivo}`);
@@ -66,15 +72,17 @@ class NFEService {
             console.error('❌ Erro no envio para SEFAZ:');
             if (error.response) {
                 console.error('Status:', error.response.status);
-                console.error('Dados:', error.response.data);
+                console.error('Dados:', error.response.data || '(vazio)');
+            } else if (error.request) {
+                console.error('Sem resposta da SEFAZ (timeout ou erro de rede)');
             } else {
-                console.error(error.message);
+                console.error('Erro:', error.message);
             }
             throw error;
         }
     }
 
-    // Os métodos sendEvento e consultarStatus permanecem iguais, mas com a mesma lógica (sem limpeza)
+    // Envio de evento de cancelamento
     async sendEvento(xmlAssinado, certData) {
         const soapEnvelope = `<?xml version="1.0" encoding="utf-8"?>
 <soap:Envelope xmlns:soap="http://schemas.xmlsoap.org/soap/envelope/">
@@ -105,6 +113,7 @@ class NFEService {
         return response.data;
     }
 
+    // Consulta de situação da NF-e
     async consultarStatus(chaveAcesso, certData) {
         const tpAmb = this.ambiente === 'producao' ? '1' : '2';
         const soapEnvelope = `<?xml version="1.0" encoding="utf-8"?>
