@@ -497,6 +497,11 @@ async function testarXmlRaw(req, res) {
         if (typeof xml === 'object' && xml.xml) {
             xml = xml.xml;
         }
+        // Se for objeto vazio ou array, pode ser que o body veio como texto puro
+        if (typeof xml === 'object' && !xml.xml) {
+            // Tenta ler como string (caso o body seja raw text)
+            xml = req.body.toString();
+        }
         if (!xml || typeof xml !== 'string' || xml.trim().length === 0) {
             return res.status(400).json({ error: 'XML não informado. Envie {"xml": "SEU_XML_AQUI"}' });
         }
