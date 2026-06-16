@@ -487,6 +487,45 @@ function extrairResultadoCancelamento(respostaXml) {
     return { cancelado, cStat, motivo, protocolo };
 }
 
+// ===================== TESTE COM XML ENVIADO PELO USUÁRIO =====================
+// ===================== TESTE COM XML ENVIADO PELO USUÁRIO =====================
+async function testarXmlRaw(req, res) {
+    console.log('📨 [TESTE RAW] Recebendo XML para enviar à SEFAZ');
+    try {
+        // Aceita tanto JSON com campo "xml" quanto texto puro
+        let xml = req.body;
+        if (typeof xml === 'object' && xml.xml) {
+            xml = xml.xml;
+        }
+        if (!xml || typeof xml !== 'string' || xml.trim().length === 0) {
+            return res.status(400).json({ error: 'XML não informado. Envie {"xml": "SEU_XML_AQUI"}' });
+        }
+
+        // Carrega o certificado
+        const certData = loadCertificates();
+        const nfeService = new NFEService('homologacao');
+
+        // Envia o XML (já deve estar assinado)
+        const resposta = await nfeService.sendNFe(xml, certData);
+        
+        // Extrai informações da resposta
+        const protocolo = extrairProtocolo(resposta);
+        const cStat = resposta.match(/<cStat>(\d+)<\/cStat>/)?.[1] || 'N/A';
+        const xMotivo = resposta.match(/<xMotivo>([^<]+)<\/xMotivo>/)?.[1] || 'N/A';
+
+        res.json({
+            success: !!protocolo,
+            protocolo,
+            cStat,
+            xMotivo,
+            respostaCompleta: resposta.substring(0, 2000)
+        });
+    } catch (error) {
+        console.error('Erro no teste raw:', error);
+        res.status(500).json({ error: error.message });
+    }
+}
+
 // ===================== ROTA DE TESTE =====================
 // ===================== ROTA DE TESTE COM XML FIXO =====================
 async function testarEnvioXMLFixo(req, res) {
@@ -527,5 +566,6 @@ module.exports = {
     listarVendasSemNFE,
     listarVendasComNFE,
     buscarXMLPorChave,
-    testarEnvioXMLFixo
+    testarEnvioXMLFixo,
+    testarXmlRaw
 };
