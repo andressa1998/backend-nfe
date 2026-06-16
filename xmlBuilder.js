@@ -17,15 +17,13 @@ function gerarXmlNfe(dados) {
         nNF,
         serie = 1,
         cNF = String(Math.floor(Math.random() * 100000000)).padStart(8, '0'),
-        tpAmb = '1', // PRODUÇÃO
+        tpAmb = '2', // padrão homologação, use '1' para produção
         emitente = {
             CNPJ: '32830261000125',
             xNome: 'Wheel Tech Bicycling Ltda',
             xFant: 'Wheel Tech Bicycling',
             IE: '9087859328',
             CRT: '1',
-            IM: 'PR',
-            CNAE: '4763603',
             fone: '4131501230',
             enderEmit: {
                 xLgr: 'R. Lourenco Jasiocha',
@@ -43,8 +41,7 @@ function gerarXmlNfe(dados) {
         produtos,
         cfop,
         natOp = 'Venda',
-        modFrete = '2',
-        venda_id = null
+        modFrete = '9'
     } = dados;
 
     if (!destinatario || !destinatario.xNome) {
@@ -56,7 +53,7 @@ function gerarXmlNfe(dados) {
     const dhSaiEnt = dhEmi;
     const ano = agora.getFullYear().toString().slice(-2);
     const mes = (agora.getMonth() + 1).toString().padStart(2, '0');
-    const cUF = '41';
+    const cUF = '41'; // Paraná
 
     const chaveSemDV = cUF + ano + mes + emitente.CNPJ + '55' +
         serie.toString().padStart(3, '0') +
@@ -82,18 +79,17 @@ function gerarXmlNfe(dados) {
                 <xProd>${(prod.nome || '').replace(/[&<>]/g, '')}</xProd>
                 <NCM>${prod.ncm || '87149990'}</NCM>
                 <CFOP>${cfop}</CFOP>
-                <uCom>PC</uCom>
+                <uCom>UN</uCom>
                 <qCom>${prod.quantidade.toFixed(4)}</qCom>
-                <vUnCom>${prod.valor_unitario.toFixed(5)}</vUnCom>
+                <vUnCom>${prod.valor_unitario.toFixed(2)}</vUnCom>
                 <vProd>${vProd.toFixed(2)}</vProd>
                 <cEANTrib>SEM GTIN</cEANTrib>
-                <uTrib>PC</uTrib>
+                <uTrib>UN</uTrib>
                 <qTrib>${prod.quantidade.toFixed(4)}</qTrib>
-                <vUnTrib>${prod.valor_unitario.toFixed(5)}</vUnTrib>
+                <vUnTrib>${prod.valor_unitario.toFixed(2)}</vUnTrib>
                 <indTot>1</indTot>
             </prod>
             <imposto>
-                <vTotTrib>0.00</vTotTrib>
                 <ICMS>
                     <ICMSSN102>
                         <orig>0</orig>
@@ -101,26 +97,19 @@ function gerarXmlNfe(dados) {
                     </ICMSSN102>
                 </ICMS>
                 <PIS>
-                    <PISOutr>
-                        <CST>49</CST>
-                        <vBC>${vProd.toFixed(2)}</vBC>
-                        <pPIS>0.0000</pPIS>
-                        <vPIS>0.00</vPIS>
-                    </PISOutr>
+                    <PISNT>
+                        <CST>07</CST>
+                    </PISNT>
                 </PIS>
                 <COFINS>
-                    <COFINSOutr>
-                        <CST>49</CST>
-                        <vBC>${vProd.toFixed(2)}</vBC>
-                        <pCOFINS>0.0000</pCOFINS>
-                        <vCOFINS>0.00</vCOFINS>
-                    </COFINSOutr>
+                    <COFINSNT>
+                        <CST>07</CST>
+                    </COFINSNT>
                 </COFINS>
             </imposto>
         </det>`;
     });
 
-    const nNFStr = nNF.toString();
     const xml = `<?xml version="1.0" encoding="UTF-8"?>
 <NFe xmlns="http://www.portalfiscal.inf.br/nfe">
     <infNFe versao="4.00" Id="${idNFe}">
@@ -142,9 +131,9 @@ function gerarXmlNfe(dados) {
             <tpAmb>${tpAmb}</tpAmb>
             <finNFe>1</finNFe>
             <indFinal>1</indFinal>
-            <indPres>0</indPres>
+            <indPres>1</indPres>
             <procEmi>0</procEmi>
-            <verProc>0</verProc>
+            <verProc>1.0</verProc>
         </ide>
         <emit>
             <CNPJ>${emitente.CNPJ}</CNPJ>
@@ -163,8 +152,6 @@ function gerarXmlNfe(dados) {
                 <fone>${emitente.fone}</fone>
             </enderEmit>
             <IE>${emitente.IE}</IE>
-            <IM>${emitente.IM}</IM>
-            <CNAE>${emitente.CNAE}</CNAE>
             <CRT>${emitente.CRT}</CRT>
         </emit>
         <dest>
@@ -191,9 +178,7 @@ function gerarXmlNfe(dados) {
                 <vICMSDeson>0.00</vICMSDeson>
                 <vFCP>0.00</vFCP>
                 <vBCST>0.00</vBCST>
-                <vST>0</vST>
-                <vFCPST>0.00</vFCPST>
-                <vFCPSTRet>0.00</vFCPSTRet>
+                <vST>0.00</vST>
                 <vProd>${totalProd.toFixed(2)}</vProd>
                 <vFrete>0.00</vFrete>
                 <vSeg>0.00</vSeg>
